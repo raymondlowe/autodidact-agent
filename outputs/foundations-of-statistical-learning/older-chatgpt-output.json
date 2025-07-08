@@ -1,0 +1,404 @@
+{
+“report_markdown”: “# Foundations of Statistical Learning\n\n## Introduction to Statistical Learning\nStatistical learning is a collection of tools for modeling and understanding complex datasets, bridging modern statistics and machine learning[^1]. It encompasses both supervised learning (predictive modeling using labeled data) and unsupervised learning (pattern discovery in unlabeled data). In supervised learning, the training data includes known target outputs (labels), and the goal is to learn a function mapping inputs to outputs; in unsupervised learning, no labels are given and the aim is to find hidden structure or groupings in the data[^2]. Statistical learning methods are applied across fields—from medicine to finance—and span a broad range of algorithms including neural networks, support vector machines (SVMs), decision trees, boosting, clustering, and dimensionality reduction techniques[^3].\n\n## Key Concepts: Generalization, Overfitting and Bias-Variance Tradeoff\nA central challenge in statistical learning is achieving good generalization: we want models that not only fit the training data but also predict well on new, unseen data. Overfitting occurs when a model is too complex and captures random noise in the training data, failing to generalize. Underfitting, on the other hand, happens when a model is too simple to capture the underlying pattern. The bias–variance tradeoff formalizes this dilemma. As model complexity increases, bias (systematic error) tends to decrease but variance (sensitivity to fluctuations in training data) increases[^4]. High-bias models are overly simplistic (underfit the data), whereas high-variance models are overly complex and prone to overfitting[^5]. The optimal model achieves a balance, minimizing total prediction error by managing this tradeoff.\n\nTo mitigate overfitting and assess generalization, practitioners use model assessment and selection techniques. One fundamental approach is to hold out a portion of data as a test set or to use cross-validation, a procedure that repeatedly partitions data to reliably estimate prediction performance on unseen data[^6]. Such techniques help in comparing models and tuning complexity (e.g. choosing the tree depth in a decision tree or the polynomial degree in regression) to select a model with the best generalization ability.\n\n## Supervised Learning Algorithms\n### Linear Methods for Regression\nOne of the simplest and most important models is linear regression, which assumes a linear relationship between a set of predictor variables and a continuous response variable. Linear regression fits a linear function (a weighted sum of inputs plus an intercept) to predict the output, typically using the ordinary least squares criterion to minimize the sum of squared errors between predictions and true values[^7]. Despite its simplicity, linear regression provides a foundation for more advanced methods and is often the first model examined due to its interpretability.\n\nBuilding on linear regression, regularization techniques address overfitting by adding penalty terms to the model’s loss function. Two popular regularized regression methods are Ridge regression and Lasso. Ridge regression adds an L2 penalty (sum of squared coefficients) to shrink coefficient magnitudes, effectively reducing model complexity[^9]. Lasso (Least Absolute Shrinkage and Selection Operator) adds an L1 penalty (sum of absolute coefficients), which not only shrinks coefficients but can drive some coefficients exactly to zero, performing variable selection[^10]. By penalizing large coefficients, these methods constrain the model flexibility and often improve predictive performance on new data.\n\n### Linear Methods for Classification\nFor classification (predicting categorical outcomes), an analogous approach is logistic regression. Logistic regression is a statistical model that uses the logistic (sigmoid) function to output a probability for the positive class, effectively modeling a binary dependent variable[^8]. Although the model is linear in the inputs (it computes a linear combination of features, then applies the logistic function), its outputs are probabilities bounded between 0 and 1. Logistic regression is widely used for its probabilistic interpretation and can be extended to multi-class settings (multinomial logistic) or to incorporate regularization as well.\n\nAnother classical method for classification is Linear Discriminant Analysis (LDA), which assumes class-specific Gaussian distributions and seeks a linear combination of features that best separates the classes. (LDA is part of the statistical foundations but less used in modern large-scale applications compared to logistic regression.)\n\n### Decision Trees and Rule-Based Models\nDecision trees are flexible non-parametric models that learn a hierarchy of if-then rules to predict the target. A decision tree is a tree-structured flowchart where each internal node tests a feature, each branch corresponds to an outcome of the test, and each leaf node assigns a prediction (class label or numerical value)[^11]. The tree is learned by recursively splitting the data on features that best separate the outcomes (commonly using criteria like information gain or Gini impurity) until stopping criteria are met. Decision trees are easy to interpret and handle heterogeneous data well, though an individual tree can be prone to overfitting if grown too deep.\n\nEnsemble methods improve upon a single tree by combining many trees to reduce variance and increase accuracy. A prominent ensemble approach is the Random Forest, which builds a large number of decision trees on bootstrap-resampled training sets and averages their predictions (for regression) or takes a majority vote (for classification)[^12]. Additionally, random forests inject randomness by selecting a random subset of features at each split of a tree, which decorrelates the trees and further improves generalization. Random forests generally achieve higher predictive performance than a single tree and mitigate overfitting due to averaging.\n\nAnother ensemble strategy is boosting. In boosting, trees (often shallow decision stumps) are trained sequentially, each new tree focusing on the errors of the previous ones. Methods like AdaBoost and gradient boosting build an ensemble of weak learners that, when combined, form a strong predictor. In AdaBoost, for example, each tree is added to the model with a weight proportional to its accuracy, and training data points that were misclassified by the ensemble get increasing emphasis in subsequent rounds. The final boosted model is a weighted sum of the individual learners. This sequential error-correcting process yields a powerful classifier that often outperforms bagging methods, at the cost of being more prone to overfitting if not carefully regularized[^13].\n\n### Support Vector Machines\nSupport Vector Machines (SVMs) are margin-based classifiers that can yield highly accurate results for both linear and nonlinear classification tasks. An SVM finds the optimal separating hyperplane between classes by maximizing the margin — the distance between the hyperplane and the nearest data points (support vectors) on each side. By focusing on these critical boundary points, SVMs achieve good generalization. Through the use of kernel functions, SVMs can efficiently handle nonlinear decision boundaries by implicitly mapping inputs into higher-dimensional feature spaces. SVM is a versatile method that has solid theoretical foundations in statistical learning theory[^14]. It performs well in medium-sized datasets and was a leading method in many domains before neural networks rose in popularity.\n\n### Neural Networks\nArtificial neural networks are a family of models inspired by the brain’s interconnected neurons. A neural network consists of layers of simple processing units (“neurons”) that combine inputs linearly and then pass them through nonlinear activation functions. These networks can learn complex nonlinear mappings from inputs to outputs by adjusting the connection weights through training algorithms (typically using gradient descent and backpropagation). For example, a multilayer perceptron (a basic feedforward neural network) with even one hidden layer can approximate a wide range of functions given sufficient neurons. Neural networks are powerful function approximators and form the basis of modern deep learning. A key idea is that successive layers learn increasingly abstract features from the data. Although training neural nets requires more data and computation, they have proven extremely effective for tasks like image and speech recognition when scaled up (deep neural networks). Conceptually, a neural network is an assembly of many logistic regression units stacked and composed in nonlinear ways, allowing it to capture complex relationships[^15].\n\n### Instance-Based Learning: k-Nearest Neighbors\nNot all learning algorithms involve an explicit parametric model; k-nearest neighbors (k-NN) is a simple instance-based learning method. To predict the output for a new instance, k-NN looks up the $k$ most similar instances in the training data (as measured by a distance metric, typically Euclidean distance in feature space). For classification, it predicts the majority class among the neighbors; for regression, it averages their values. The model capacity is determined by $k$: a small $k$ (e.g., 1-nearest neighbor) can capture fine local patterns but may be noisy (high variance), while a large $k$ yields smoother, more biased predictions. k-NN is intuitive and often a strong baseline since it effectively uses the entire training dataset for prediction, although it becomes inefficient with very large datasets. It is a non-parametric method (no fixed number of parameters) and its performance can degrade in high dimensions due to the curse of dimensionality[^16].\n\n## Unsupervised Learning Methods\n### Clustering\nIn unsupervised learning, clustering is a fundamental task which involves discovering natural groups in data without any labels. The goal of clustering is to partition a dataset into clusters such that instances within each cluster are more similar to each other than to those in other clusters[^17]. There are many clustering algorithms, but a well-known example is K-means clustering. K-means aims to find $K$ cluster centroids and assign each data point to the nearest centroid, iteratively refining cluster assignments and centroid positions to minimize within-cluster variance. Another family of clustering methods is hierarchical clustering, which builds a tree of clusters by either successive merges (agglomerative) or splits (divisive). Clustering is often used in exploratory data analysis to identify latent groupings, customer segmentation, image compression (vector quantization), and other tasks where labeling data is difficult or expensive.\n\n### Dimensionality Reduction\nHigh-dimensional data can be difficult to analyze or visualize, so unsupervised dimensionality reduction techniques are used to find simpler structure in data. Principal Component Analysis (PCA) is a classic technique that transforms the original features into a new set of uncorrelated variables (principal components) that capture the majority of the variance in the data. PCA uses an orthogonal transformation to re-express the data in terms of these principal components, which are ordered by the amount of variance they explain[^18]. By keeping only the first few components, one can obtain a lower-dimensional representation of the data that retains most of the important information. PCA is widely used for data preprocessing (e.g., noise reduction), visualization (projecting data to 2D or 3D), and as a prelude to other learning tasks (to mitigate the curse of dimensionality).\n\nAnother set of techniques for dimensionality reduction and feature extraction includes manifold learning methods (like t-SNE or UMAP) which aim to preserve local structure of the data in a low-dimensional embedding. These methods are beyond the scope of foundational concepts but are important in modern data analysis.\n\n## Advanced Topics and Outlook\nThe field of statistical learning also includes more advanced frameworks. Probabilistic graphical models (such as Bayesian networks and Markov random fields) provide a way to represent complex joint probability distributions using graphs to encode conditional independence relationships between variables[^19]. Graphical models unify graph theory and probability theory, enabling efficient inference and reasoning under uncertainty in high-dimensional problems. They form the basis of many sophisticated models (for example, Hidden Markov Models, Bayesian networks for diagnostics, etc.).\n\nAnother modern challenge is high-dimensional data (when the number of features $p$ is very large relative to the number of observations $n$). High-dimensional settings (often called “$p \gg n$” problems) demand special care to avoid overfitting and handle issues like multicollinearity. Techniques such as regularization (especially the lasso for feature selection) are crucial in these scenarios, as are statistical methods for controlling false discoveries when doing many hypothesis tests. For instance, specialized approaches address the fact that with thousands of features, some will appear significant just by chance (necessitating adjustments like false discovery rate control)[^20]. The continued development of methods for feature selection, dimensionality reduction, and model regularization is vital as datasets grow in dimensionality.\n\nConclusion: The foundations of statistical learning combine statistical theory with computational algorithms to extract patterns from data. By understanding core supervised methods (from linear models to ensembles and kernels), unsupervised techniques (clustering and PCA), and the guiding principles of model assessment and inference, one builds a toolkit for tackling a wide array of data-driven problems. These foundations also set the stage for more advanced topics like deep learning and Bayesian methods, providing a solid base for further study in machine learning and data science.\n”,
+“graph”: {
+“nodes”: [
+{
+“id”: “probability-basics”,
+“label”: “Probability Theory Basics”,
+“summary”: “Covers fundamental probability concepts (random variables, distributions, likelihood) that underlie statistical modeling and inference.”,
+“study_time_minutes”: 30,
+“source_citations”: [22]
+},
+{
+“id”: “linear-algebra-basics”,
+“label”: “Linear Algebra Basics”,
+“summary”: “Introduces vectors, matrices, and linear transformations—essential mathematics for understanding algorithms like PCA, SVM, and neural networks.”,
+“study_time_minutes”: 30,
+“source_citations”: [21]
+},
+{
+“id”: “statistical-learning-overview”,
+“label”: “Statistical Learning Overview”,
+“summary”: “Defines statistical learning as the broad field of learning from data, encompassing supervised (prediction) and unsupervised (pattern discovery) methods in a unified framework.”,
+“study_time_minutes”: 30,
+“source_citations”: [1, 3]
+},
+{
+“id”: “supervised-learning-fundamentals”,
+“label”: “Supervised Learning Fundamentals”,
+“summary”: “Covers the basics of supervised learning, where models are trained on labeled data to predict outcomes. Includes tasks like regression and classification and introduces key goals like generalization.”,
+“study_time_minutes”: 30,
+“source_citations”: [2]
+},
+{
+“id”: “unsupervised-learning-fundamentals”,
+“label”: “Unsupervised Learning Fundamentals”,
+“summary”: “Covers the basics of unsupervised learning, where algorithms find patterns or groupings in unlabeled data (e.g., clustering, dimensionality reduction) without explicit target outputs.”,
+“study_time_minutes”: 30,
+“source_citations”: [2]
+},
+{
+“id”: “bias-variance-tradeoff”,
+“label”: “Bias–Variance Tradeoff”,
+“summary”: “Explains how model complexity affects bias and variance. High-bias (simple) models underfit, while high-variance (overly complex) models overfit; the tradeoff is central to model generalization.”,
+“study_time_minutes”: 30,
+“source_citations”: [4]
+},
+{
+“id”: “model-selection”,
+“label”: “Model Assessment & Selection”,
+“summary”: “Discusses techniques to evaluate and choose models, such as train/test splits and k-fold cross-validation, to ensure the selected model generalizes well and avoids overfitting.”,
+“study_time_minutes”: 30,
+“source_citations”: [6]
+},
+{
+“id”: “linear-regression”,
+“label”: “Linear Regression”,
+“summary”: “A fundamental regression approach that fits a linear equation to describe the relationship between input features and a continuous outcome, typically estimated by least squares.”,
+“study_time_minutes”: 30,
+“source_citations”: [7]
+},
+{
+“id”: “logistic-regression”,
+“label”: “Logistic Regression”,
+“summary”: “A linear classification model that uses the logistic function to output probabilities for binary outcomes. It models log-odds as a linear combination of features and is used for classification tasks.”,
+“study_time_minutes”: 30,
+“source_citations”: [8]
+},
+{
+“id”: “regularization”,
+“label”: “Regularization (Ridge & Lasso)”,
+“summary”: “Techniques that add penalty terms to a model’s loss function to prevent overfitting. Ridge regression (L2 penalty) shrinks coefficients, while Lasso (L1 penalty) can shrink and select features by driving some coefficients to zero.”,
+“study_time_minutes”: 30,
+“source_citations”: [9, 10]
+},
+{
+“id”: “decision-trees”,
+“label”: “Decision Trees”,
+“summary”: “Tree-structured models for regression or classification. They recursively split the data based on feature thresholds, creating a hierarchy of decisions that lead to predictions at leaf nodes.”,
+“study_time_minutes”: 30,
+“source_citations”: [11]
+},
+{
+“id”: “random-forests”,
+“label”: “Random Forests”,
+“summary”: “An ensemble method that constructs a multitude of decision trees on bootstrapped samples and averages their predictions. Random forests reduce variance and improve accuracy over individual trees.”,
+“study_time_minutes”: 30,
+“source_citations”: [12]
+},
+{
+“id”: “boosting”,
+“label”: “Boosting (Ensemble)”,
+“summary”: “An ensemble technique that builds a strong model by sequentially adding simple models (weak learners) that focus on correcting the errors of the preceding ones. Examples include AdaBoost and gradient boosting.”,
+“study_time_minutes”: 30,
+“source_citations”: [13]
+},
+{
+“id”: “support-vector-machines”,
+“label”: “Support Vector Machines”,
+“summary”: “A supervised learning method that finds the optimal hyperplane to separate classes with maximum margin. SVMs can use kernel functions to handle nonlinear separations and are known for robust performance.”,
+“study_time_minutes”: 30,
+“source_citations”: [14]
+},
+{
+“id”: “neural-networks”,
+“label”: “Neural Networks”,
+“summary”: “Models inspired by biological brains, composed of layers of interconnected ‘neurons’ that transform inputs through weighted sums and nonlinear activation functions. They can learn complex nonlinear relationships and form the basis of deep learning.”,
+“study_time_minutes”: 30,
+“source_citations”: [15]
+},
+{
+“id”: “k-nearest-neighbors”,
+“label”: “k-Nearest Neighbors”,
+“summary”: “A non-parametric algorithm that classifies or predicts an instance based on the majority class (or average value) of its k closest examples in the training data. Simplicity and no explicit training are its hallmarks.”,
+“study_time_minutes”: 30,
+“source_citations”: [16]
+},
+{
+“id”: “clustering”,
+“label”: “Clustering”,
+“summary”: “Unsupervised grouping of data into clusters such that items in the same cluster are more similar to each other than to those in different clusters. Methods like K-means and hierarchical clustering fall in this category.”,
+“study_time_minutes”: 30,
+“source_citations”: [17]
+},
+{
+“id”: “principal-component-analysis”,
+“label”: “Principal Component Analysis (PCA)”,
+“summary”: “An unsupervised dimensionality reduction technique that finds new orthogonal axes (principal components) capturing maximal variance in data. By projecting onto the top components, PCA compresses data with minimal information loss.”,
+“study_time_minutes”: 30,
+“source_citations”: [18]
+},
+{
+“id”: “graphical-models”,
+“label”: “Probabilistic Graphical Models”,
+“summary”: “A framework combining probability and graph theory to represent complex joint distributions. Nodes represent random variables and edges encode conditional dependencies, enabling compact representation and inference in high-dimensional probability models.”,
+“study_time_minutes”: 30,
+“source_citations”: [19]
+},
+{
+“id”: “high-dimensional-learning”,
+“label”: “High-Dimensional Data Challenges”,
+“summary”: “Covers issues and techniques for scenarios where the number of features greatly exceeds the number of samples (p >> n). Emphasizes regularization (e.g., lasso) for feature selection and statistical methods to control false discoveries in multiple testing.”,
+“study_time_minutes”: 30,
+“source_citations”: [20]
+}
+],
+“edges”: [
+{
+“source”: “probability-basics”,
+“target”: “logistic-regression”,
+“confidence”: 0.8,
+“rationale”: “Logistic regression models class probabilities and likelihood; a foundational understanding of probability theory helps in grasping its concepts ￼.”,
+“source_citations”: [22]
+},
+{
+“source”: “probability-basics”,
+“target”: “support-vector-machines”,
+“confidence”: 0.5,
+“rationale”: “Support Vector Machines come from statistical learning theory; a basic probability background is often expected in learning SVMs ￼.”,
+“source_citations”: [22]
+},
+{
+“source”: “probability-basics”,
+“target”: “graphical-models”,
+“confidence”: 1.0,
+“rationale”: “Graphical models are explicitly probabilistic – they encode probability distributions in graph form, so understanding probability is essential ￼.”,
+“source_citations”: [19]
+},
+{
+“source”: “probability-basics”,
+“target”: “high-dimensional-learning”,
+“confidence”: 0.9,
+“rationale”: “High-dimensional analysis often involves statistical significance and multiple hypothesis testing (e.g., false discovery rates), which require strong probability and statistical fundamentals ￼.”,
+“source_citations”: [20]
+},
+{
+“source”: “linear-algebra-basics”,
+“target”: “principal-component-analysis”,
+“confidence”: 1.0,
+“rationale”: “PCA relies on linear algebra concepts (eigenvectors, orthogonal transformations) to compute principal components, so linear algebra is a direct prerequisite ￼.”,
+“source_citations”: [21]
+},
+{
+“source”: “linear-algebra-basics”,
+“target”: “support-vector-machines”,
+“confidence”: 1.0,
+“rationale”: “Formulating the SVM hyperplane and kernel transformations involves vectors, inner products, and geometry – all grounded in linear algebra ￼.”,
+“source_citations”: [21]
+},
+{
+“source”: “linear-algebra-basics”,
+“target”: “neural-networks”,
+“confidence”: 0.8,
+“rationale”: “Training neural networks entails operations with weight matrices and vectors (for layers of neurons), so linear algebra provides the necessary mathematical language ￼.”,
+“source_citations”: [21]
+},
+{
+“source”: “statistical-learning-overview”,
+“target”: “supervised-learning-fundamentals”,
+“confidence”: 1.0,
+“rationale”: “Supervised learning is one of the two main branches of statistical learning (focused on prediction with labeled data) ￼.”,
+“source_citations”: [3]
+},
+{
+“source”: “statistical-learning-overview”,
+“target”: “unsupervised-learning-fundamentals”,
+“confidence”: 1.0,
+“rationale”: “Unsupervised learning is the other main branch of statistical learning (discovering patterns in unlabeled data) ￼.”,
+“source_citations”: [3]
+},
+{
+“source”: “supervised-learning-fundamentals”,
+“target”: “bias-variance-tradeoff”,
+“confidence”: 1.0,
+“rationale”: “The bias–variance tradeoff is a core concept in supervised learning, describing model performance on training vs. unseen data ￼.”,
+“source_citations”: [4]
+},
+{
+“source”: “supervised-learning-fundamentals”,
+“target”: “linear-regression”,
+“confidence”: 1.0,
+“rationale”: “Linear regression is typically the first supervised learning method introduced, exemplifying how models learn from labeled data (predicting a numeric response) ￼.”,
+“source_citations”: [3]
+},
+{
+“source”: “supervised-learning-fundamentals”,
+“target”: “logistic-regression”,
+“confidence”: 1.0,
+“rationale”: “Logistic regression extends the supervised learning framework to classification problems, building on basic regression concepts to handle categorical outcomes ￼.”,
+“source_citations”: [3]
+},
+{
+“source”: “supervised-learning-fundamentals”,
+“target”: “decision-trees”,
+“confidence”: 1.0,
+“rationale”: “Decision trees are a key category of supervised learning models (used for both classification and regression) and are covered as fundamental supervised techniques ￼.”,
+“source_citations”: [3]
+},
+{
+“source”: “supervised-learning-fundamentals”,
+“target”: “k-nearest-neighbors”,
+“confidence”: 1.0,
+“rationale”: “k-NN is a basic supervised learning approach (instance-based) introduced early to illustrate classification/regression by example comparison ￼.”,
+“source_citations”: [22]
+},
+{
+“source”: “unsupervised-learning-fundamentals”,
+“target”: “clustering”,
+“confidence”: 1.0,
+“rationale”: “Clustering is a primary unsupervised learning task and is typically discussed as an introductory example of finding structure without labels ￼.”,
+“source_citations”: [1]
+},
+{
+“source”: “unsupervised-learning-fundamentals”,
+“target”: “principal-component-analysis”,
+“confidence”: 1.0,
+“rationale”: “PCA is a foundational unsupervised method for dimensionality reduction, introduced as part of unsupervised learning fundamentals on finding patterns and structure in data ￼.”,
+“source_citations”: [1]
+},
+{
+“source”: “bias-variance-tradeoff”,
+“target”: “model-selection”,
+“confidence”: 1.0,
+“rationale”: “Understanding the bias-variance tradeoff (overfitting vs. underfitting) motivates techniques like cross-validation to select models with the right complexity for generalization.”,
+“source_citations”: [4]
+},
+{
+“source”: “linear-regression”,
+“target”: “regularization”,
+“confidence”: 1.0,
+“rationale”: “Regularization methods (ridge, lasso) build directly on the linear regression framework by modifying its loss function with penalty terms to address overfitting ￼.”,
+“source_citations”: [9, 10]
+},
+{
+“source”: “linear-regression”,
+“target”: “logistic-regression”,
+“confidence”: 0.9,
+“rationale”: “Logistic regression can be viewed as an extension of linear modeling to classification; having familiarity with linear regression makes it easier to grasp logistic regression’s form and interpretation ￼.”,
+“source_citations”: [23]
+},
+{
+“source”: “decision-trees”,
+“target”: “random-forests”,
+“confidence”: 1.0,
+“rationale”: “Random forests are ensembles of decision trees—one must understand single decision trees to comprehend how a forest of trees improves upon them ￼.”,
+“source_citations”: [12]
+},
+{
+“source”: “decision-trees”,
+“target”: “boosting”,
+“confidence”: 1.0,
+“rationale”: “Boosting typically uses decision trees as the weak learners added in sequence, so knowledge of how a decision tree functions is needed to follow boosting algorithms ￼.”,
+“source_citations”: [13]
+},
+{
+“source”: “regularization”,
+“target”: “high-dimensional-learning”,
+“confidence”: 1.0,
+“rationale”: “In high-dimensional settings (p >> n), regularization (especially the lasso) is crucial to prevent overfitting and perform feature selection ￼.”,
+“source_citations”: [20]
+},
+{
+“source”: “model-selection”,
+“target”: “high-dimensional-learning”,
+“confidence”: 0.8,
+“rationale”: “Analyzing high-dimensional data often involves selecting a subset of features or models and controlling false positives; rigorous model selection techniques are necessary to handle the multiple comparisons and complexity issues ￼.”,
+“source_citations”: [20]
+}
+]
+},
+“footnotes”: {
+“1”: {
+“title”: “Statistical Learning and Data Mining (Fall 2023) – Course Description”,
+“url”: “https://phonchi.github.io/nsysu-math524/”
+},
+“2”: {
+“title”: “Supervised learning - Wikipedia”,
+“url”: “https://en.wikipedia.org/wiki/Supervised_learning”
+},
+“3”: {
+“title”: “The Elements of Statistical Learning (2nd ed., 2009) - Book overview”,
+“url”: “https://doi.org/10.1007/978-0-387-84858-7”
+},
+“4”: {
+“title”: “Bias–variance tradeoff - Wikipedia”,
+“url”: “https://en.wikipedia.org/wiki/Bias%E2%80%93variance_tradeoff”
+},
+“5”: {
+“title”: “Bias–variance tradeoff - Wikipedia”,
+“url”: “https://en.wikipedia.org/wiki/Bias%E2%80%93variance_tradeoff”
+},
+“6”: {
+“title”: “K-Fold Cross-Validation – MITRE D3FEND”,
+“url”: “https://d3fend.mitre.org/acf/technique/d3f:K-FoldCross-Validation/”
+},
+“7”: {
+“title”: “Linear regression - Wikipedia”,
+“url”: “https://en.wikipedia.org/wiki/Linear_regression”
+},
+“8”: {
+“title”: “Logistic regression - Wikipedia”,
+“url”: “https://en.wikipedia.org/wiki/Logistic_regression”
+},
+“9”: {
+“title”: “Linear Regression in Data Science in 2025 – Fynd Academy”,
+“url”: “https://www.fynd.academy/blog/regression-in-data-science”
+},
+“10”: {
+“title”: “Linear Regression in Data Science in 2025 – Fynd Academy”,
+“url”: “https://www.fynd.academy/blog/regression-in-data-science”
+},
+“11”: {
+“title”: “Decision Tree in Machine Learning – GeeksforGeeks”,
+“url”: “https://www.geeksforgeeks.org/machine-learning/decision-tree-introduction-example/”
+},
+“12”: {
+“title”: “"The Random Forest Algorithm" – Medium (Dec 2023)”,
+“url”: “https://medium.com/@glennlenormand/the-random-forest-algorithm-1eb8003eee85”
+},
+“13”: {
+“title”: “Ensemble Learning – GeeksforGeeks”,
+“url”: “https://www.geeksforgeeks.org/machine-learning/a-comprehensive-guide-to-ensemble-learning/”
+},
+“14”: {
+“title”: “Support-vector machine - Wikipedia”,
+“url”: “https://en.wikipedia.org/wiki/Support_vector_machine”
+},
+“15”: {
+“title”: “What Is a Neural Network? – Investopedia”,
+“url”: “https://www.investopedia.com/terms/n/neuralnetwork.asp”
+},
+“16”: {
+“title”: “k-nearest neighbors algorithm - Wikipedia”,
+“url”: “https://en.wikipedia.org/wiki/K-nearest_neighbors_algorithm”
+},
+“17”: {
+“title”: “Cluster analysis - Wikipedia”,
+“url”: “https://en.wikipedia.org/wiki/Cluster_analysis”
+},
+“18”: {
+“title”: “Principal component analysis - Wikipedia”,
+“url”: “https://en.wikipedia.org/wiki/Principal_component_analysis”
+},
+“19”: {
+“title”: “Graphical model - Wikipedia”,
+“url”: “https://en.wikipedia.org/wiki/Graphical_model”
+},
+“20”: {
+“title”: “The Elements of Statistical Learning (2nd ed.) – New topics (2009)”,
+“url”: “https://doi.org/10.1007/978-0-387-84858-7”
+},
+“21”: {
+“title”: “UT Dallas Course Catalog (2025) – Linear algebra prerequisite for PCA/SVM”,
+“url”: “http://catalog.utdallas.edu/2025/graduate”
+},
+“22”: {
+“title”: “UNC STOR Course Listing – Probability prerequisite for ML methods”,
+“url”: “http://catalog.unc.edu/”
+},
+“23”: {
+“title”: “"25 Best Books for Machine Learning" – PythonGeeks (2021)”,
+“url”: “https://pythongeeks.org/25-best-books-for-machine-learning/”
+}
+}
+}
