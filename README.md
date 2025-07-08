@@ -1,4 +1,4 @@
-Autodidact 🧠
+# Autodidact 🧠
 
 Autodidact is an open-source AI-powered learning assistant built for autodidacts—people who love to learn independently. The app helps you break down complex topics or books into a structured, auditable, and personalized learning journey.
 
@@ -9,7 +9,7 @@ Autodidact supports two modes:
 The system emphasizes transparency and user control, allowing you to toggle AI involvement up or down and audit your learning journey via the generated knowledge graph. Think of it as a blend of personal tutor, research assistant, and interactive syllabus—all in one.
 
 
-# Some notes
+## Some notes
 
 `python3 -m venv .venv`
 `source .venv/bin/activate`
