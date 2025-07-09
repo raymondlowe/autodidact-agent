@@ -6,6 +6,7 @@ Main Streamlit application
 import streamlit as st
 import uuid
 import json
+import time
 from pathlib import Path
 from typing import Optional, List
 
@@ -15,7 +16,8 @@ from backend.db import (
     get_project, 
     create_project,
     save_graph_to_db,
-    get_next_nodes
+    get_next_nodes,
+    get_db_connection
 )
 from backend.jobs import (
     clarify_topic,
@@ -101,7 +103,7 @@ def handle_clarification(topic: str, hours: int):
     """Handle the clarification flow"""
     # Check if we need clarification
     if st.session_state.clarification_state is None:
-        with st.spinner("Analyzing your topic..."):
+        with st.spinner("🔍 Analyzing your topic..."):
             try:
                 result = clarify_topic(topic, hours)
                 st.session_state.clarification_state = result
@@ -113,43 +115,50 @@ def handle_clarification(topic: str, hours: int):
     result = st.session_state.clarification_state
     
     if result["need_clarification"]:
-        st.markdown("### 🤔 Let me understand better...")
-        st.info("Your topic is quite broad. Please help me narrow it down by answering a few questions:")
-        
-        # Show questions and collect responses
-        responses = []
-        for i, question in enumerate(result["questions"]):
-            response = st.text_input(
-                f"{i+1}. {question}",
-                key=f"clarification_q_{i}",
-                help="Type 'skip' or 'idk' if you're not sure"
-            )
-            responses.append(response)
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Submit Answers", type="primary"):
-                # Check for skip responses
-                skip_count = sum(1 for r in responses if is_skip_response(r))
-                
-                if skip_count == len(responses) and st.session_state.clarification_attempts < 2:
-                    st.warning("⚠️ Please try to answer at least one question to help me create a better learning plan.")
-                    st.session_state.clarification_attempts += 1
-                else:
-                    # Process responses
-                    refined_topic = process_clarification_responses(result["questions"], responses)
-                    if refined_topic:
-                        topic = refined_topic
-                    
-                    # Start Deep Research
-                    start_deep_research(topic, hours)
+        # Show clarification in centered column
+        col1, col2, col3 = st.columns([1, 2, 1])
         
         with col2:
-            if st.button("Skip Clarification"):
-                # Use original topic
-                start_deep_research(topic, hours)
+            st.markdown("### 🤔 Let me understand better...")
+            st.info(f"I'd like to narrow down **\"{topic}\"** to create a more focused learning plan.")
+            
+            # Show questions in expandable section
+            with st.expander("📝 Clarification Questions", expanded=True):
+                st.markdown("*Please answer the questions below to help me understand what you want to learn. You can type 'skip' for any question you're unsure about.*")
+                
+                responses = []
+                for i, question in enumerate(result["questions"]):
+                    response = st.text_input(
+                        f"**{i+1}.** {question}",
+                        key=f"clarification_q_{i}",
+                        placeholder="Your answer (or type 'skip')"
+                    )
+                    responses.append(response)
+            
+            col_a, col_b = st.columns(2)
+            with col_a:
+                if st.button("✅ Submit Answers", type="primary", use_container_width=True):
+                    # Check for skip responses
+                    skip_count = sum(1 for r in responses if is_skip_response(r))
+                    
+                    if skip_count == len(responses) and st.session_state.clarification_attempts < 2:
+                        st.warning("⚠️ Please try to answer at least one question to help me create a better learning plan.")
+                        st.session_state.clarification_attempts += 1
+                    else:
+                        # Process responses
+                        refined_topic = process_clarification_responses(result["questions"], responses)
+                        if refined_topic:
+                            topic = refined_topic
+                        
+                        # Start Deep Research
+                        start_deep_research(topic, hours)
+            
+            with col_b:
+                if st.button("⏩ Skip Clarification", use_container_width=True):
+                    # Use original topic
+                    start_deep_research(topic, hours)
     else:
-        # No clarification needed, start Deep Research
+        # No clarification needed, start Deep Research directly
         refined_topic = result.get("refined_topic", topic)
         start_deep_research(refined_topic, hours)
 
@@ -158,63 +167,104 @@ def start_deep_research(topic: str, hours: int):
     """Start the Deep Research process"""
     st.session_state.clarification_state = None  # Reset clarification
     
-    with st.spinner(f"🔍 Conducting deep research on: {topic}\n\nThis may take 10-30 minutes..."):
-        try:
-            # Run Deep Research
-            result = run_deep_research_job(topic, hours)
+    # Show progress in centered column
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        st.markdown("### 🔬 Deep Research in Progress")
+        st.info(f"**Topic:** {topic}\n\n**Target Duration:** {hours} hours")
+        
+        progress_placeholder = st.empty()
+        
+        with st.spinner(""):
+            # Show animated progress messages
+            progress_messages = [
+                "🔍 Conducting comprehensive research...",
+                "📚 Analyzing learning resources...",
+                "🧩 Building prerequisite relationships...",
+                "📊 Creating your knowledge graph...",
+                "✨ Generating learning objectives...",
+                "📝 Finalizing your personalized curriculum..."
+            ]
             
-            # Create a temporary project ID for file storage
-            temp_project_id = str(uuid.uuid4())
-            
-            # Save files to disk
-            report_path = save_project_files(
-                temp_project_id,
-                result["report_markdown"],
-                result["graph"],
-                result
-            )
-            
-            # Create project record (this creates the actual project_id)
-            project_id = create_project(
-                topic=topic,
-                report_path=report_path,
-                graph_json=result["graph"],
-                footnotes=result["footnotes"]
-            )
-            
-            # Save graph to database
-            save_graph_to_db(project_id, result["graph"])
-            
-            # Update session state
-            st.session_state.project_id = project_id
-            
-            st.success("✅ Research complete! Your personalized learning plan is ready.")
-            st.rerun()
-            
-        except Exception as e:
-            st.error(f"Error during Deep Research: {str(e)}")
-            st.info("Please try again with a different topic or check your API key.")
+            try:
+                # Note: In a real implementation, we'd update these messages based on actual progress
+                progress_placeholder.info(
+                    "**Please wait while I create your learning plan...**\n\n"
+                    "This typically takes 10-30 minutes depending on the topic complexity.\n\n"
+                    "I'm analyzing multiple sources to build the most effective learning path for you."
+                )
+                
+                # Run Deep Research
+                result = run_deep_research_job(topic, hours)
+                
+                # Create a temporary project ID for file storage
+                temp_project_id = str(uuid.uuid4())
+                
+                # Save files to disk
+                report_path = save_project_files(
+                    temp_project_id,
+                    result["report_markdown"],
+                    result["graph"],
+                    result
+                )
+                
+                # Create project record (this creates the actual project_id)
+                project_id = create_project(
+                    topic=topic,
+                    report_path=report_path,
+                    graph_json=result["graph"],
+                    footnotes=result["footnotes"]
+                )
+                
+                # Save graph to database
+                save_graph_to_db(project_id, result["graph"])
+                
+                # Update session state
+                st.session_state.project_id = project_id
+                
+                # Show success message
+                progress_placeholder.empty()
+                st.success("✅ **Research complete!**\n\nYour personalized learning plan is ready.")
+                st.balloons()
+                
+                # Wait a moment before redirecting
+                import time
+                time.sleep(2)
+                st.rerun()
+                
+            except Exception as e:
+                progress_placeholder.empty()
+                st.error(f"❌ **Error during Deep Research**\n\n{str(e)}")
+                st.info(
+                    "**Troubleshooting tips:**\n"
+                    "- Check your OpenAI API key is valid\n"
+                    "- Ensure you have sufficient API credits\n"
+                    "- Try a more specific topic\n"
+                    "- Check your internet connection"
+                )
 
 
 def show_welcome_screen():
     """Show the welcome/landing screen"""
-    st.markdown("# 🧠 Autodidact")
-    st.markdown("### Your AI-Powered Learning Assistant")
-    
-    st.markdown("""
-    Welcome to Autodidact! I'm here to help you learn any topic through:
-    - 🔍 **Deep Research**: I'll investigate your topic and create a comprehensive study plan
-    - 📊 **Knowledge Graphs**: Visual representation of concepts and their prerequisites  
-    - 👨‍🏫 **AI Tutoring**: Personalized 30-minute learning sessions
-    - 📈 **Progress Tracking**: Monitor your mastery of each concept
-    """)
-    
-    st.markdown("---")
-    
-    # Topic input section
+    # Centered layout with columns
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
+        st.markdown("# 🧠 Autodidact")
+        st.markdown("### Your AI-Powered Learning Assistant")
+        
+        st.markdown("""
+        Welcome to Autodidact! I'm here to help you learn any topic through:
+        - 🔍 **Deep Research**: I'll investigate your topic and create a comprehensive study plan
+        - 📊 **Knowledge Graphs**: Visual representation of concepts and their prerequisites  
+        - 👨‍🏫 **AI Tutoring**: Personalized 30-minute learning sessions
+        - 📈 **Progress Tracking**: Monitor your mastery of each concept
+        """)
+        
+        st.markdown("---")
+        
+        # Topic input section
         st.markdown("### What would you like to learn?")
         
         topic = st.text_input(
@@ -231,23 +281,41 @@ def show_welcome_screen():
             help="This helps me plan the depth of coverage"
         )
         
-        if st.button("Start Learning Journey", type="primary", use_container_width=True):
+        if st.button("🚀 Start Learning Journey", type="primary", use_container_width=True):
             if topic:
                 # Handle clarification flow
                 handle_clarification(topic, hours)
             else:
                 st.error("Please enter a topic to learn")
-    
-    # Example topics
-    with st.expander("📚 Example Topics"):
-        st.markdown("""
-        - Foundations of Statistical Learning
-        - React Hooks and State Management
-        - Bitcoin and Ethereum Internals
-        - Quantum Computing Basics
-        - Modern World History: 1900-1950
-        - Introduction to Neuroscience
-        """)
+        
+        # Example topics in expandable section
+        with st.expander("💡 Need inspiration? Try these example topics:"):
+            st.markdown("""
+            **Technology & Programming:**
+            - Foundations of Statistical Learning
+            - React Hooks and State Management
+            - Bitcoin and Ethereum Internals
+            - Quantum Computing Basics
+            - Rust Programming Language Fundamentals
+            
+            **Science & Mathematics:**
+            - Introduction to Neuroscience
+            - Linear Algebra for Machine Learning
+            - Climate Change: Causes and Solutions
+            - Molecular Biology Essentials
+            
+            **History & Social Sciences:**
+            - Modern World History: 1900-1950
+            - Behavioral Economics Principles
+            - Philosophy of Mind
+            - Cultural Anthropology Basics
+            
+            **Business & Finance:**
+            - Venture Capital Fundamentals
+            - Supply Chain Management
+            - Digital Marketing Strategy
+            - Financial Derivatives Explained
+            """)
 
 
 def show_workspace():
@@ -260,13 +328,49 @@ def show_workspace():
             st.rerun()
         return
     
+    # Project header
     st.markdown(f"# 📚 {project['topic']}")
     
-    # Two-column layout
+    # Add a subtle divider
+    st.markdown("---")
+    
+    # Two-column layout with adjusted ratio
     col1, col2 = st.columns([1, 2])
     
     with col1:
-        # Report viewer
+        # Session controls section
+        st.markdown("### 🎓 Learning Sessions")
+        
+        # Get available nodes
+        next_nodes = get_next_nodes(st.session_state.project_id)
+        
+        if next_nodes:
+            if len(next_nodes) == 1:
+                st.info(f"**Ready to learn:**\n\n📖 {next_nodes[0]['label']}")
+                if st.button("Start Session →", type="primary", use_container_width=True):
+                    st.session_state.current_node = next_nodes[0]['id']
+                    st.session_state.in_session = True
+                    st.rerun()
+            else:
+                # Multiple options
+                st.info("**Choose your next topic:**")
+                selected = st.radio(
+                    "Available topics:",
+                    options=[n['id'] for n in next_nodes],
+                    format_func=lambda x: f"📖 {next(n['label'] for n in next_nodes if n['id'] == x)}",
+                    label_visibility="collapsed"
+                )
+                if st.button("Start Session →", type="primary", use_container_width=True):
+                    st.session_state.current_node = selected
+                    st.session_state.in_session = True
+                    st.rerun()
+        else:
+            st.success("🎉 **Congratulations!**\n\nYou've completed all available topics!")
+            # TODO: Add completion stats here
+        
+        st.markdown("---")
+        
+        # Collapsible report viewer
         with st.expander("📄 Research Report", expanded=False):
             try:
                 # Load report and footnotes
@@ -277,54 +381,59 @@ def show_workspace():
                     
                     # Format with footnotes
                     formatted_report = format_report_with_footnotes(report_md, footnotes)
-                    st.markdown(formatted_report, unsafe_allow_html=True)
+                    
+                    # Add custom CSS for better report styling
+                    st.markdown("""
+                    <style>
+                    .report-content {
+                        max-height: 600px;
+                        overflow-y: auto;
+                        padding-right: 10px;
+                    }
+                    .report-content h1, .report-content h2 {
+                        color: #1f77b4;
+                    }
+                    .report-content blockquote {
+                        border-left: 3px solid #1f77b4;
+                        padding-left: 10px;
+                        color: #666;
+                    }
+                    </style>
+                    """, unsafe_allow_html=True)
+                    
+                    st.markdown(f'<div class="report-content">{formatted_report}</div>', 
+                               unsafe_allow_html=True)
                 else:
                     st.warning("Report file not found")
             except Exception as e:
                 st.error(f"Error loading report: {str(e)}")
-        
-        st.markdown("---")
-        
-        # Session controls
-        st.markdown("### 🎓 Learning Sessions")
-        
-        # Get available nodes
-        next_nodes = get_next_nodes(st.session_state.project_id)
-        
-        if next_nodes:
-            if len(next_nodes) == 1:
-                st.info(f"Ready to learn: **{next_nodes[0]['label']}**")
-                if st.button("Start Session", type="primary", use_container_width=True):
-                    st.session_state.current_node = next_nodes[0]['id']
-                    st.session_state.in_session = True
-                    st.rerun()
-            else:
-                # Multiple options
-                st.info("Choose your next topic:")
-                selected = st.radio(
-                    "Available topics:",
-                    options=[n['id'] for n in next_nodes],
-                    format_func=lambda x: next(n['label'] for n in next_nodes if n['id'] == x),
-                    label_visibility="collapsed"
-                )
-                if st.button("Start Session", type="primary", use_container_width=True):
-                    st.session_state.current_node = selected
-                    st.session_state.in_session = True
-                    st.rerun()
-        else:
-            st.success("🎉 Congratulations! You've completed all available topics!")
     
     with col2:
         # Knowledge graph visualization
         st.markdown("### 📊 Knowledge Graph")
         
+        # Add legend
+        legend_cols = st.columns([1, 1, 1])
+        with legend_cols[0]:
+            st.markdown("🟩 **Mastered** (70%+)")
+        with legend_cols[1]:
+            st.markdown("🟨 **In Progress**")
+        with legend_cols[2]:
+            st.markdown("⬜ **Not Started**")
+        
         try:
             # Load graph data
             graph_data = json.loads(project['graph_json'])
             
-            # Get node mastery data
-            # TODO: Query actual mastery from database
-            node_mastery = {node['id']: 0.0 for node in graph_data['nodes']}
+            # Get node mastery data from database
+            with get_db_connection() as conn:
+                cursor = conn.execute("""
+                    SELECT original_id, mastery 
+                    FROM node 
+                    WHERE project_id = ?
+                """, (st.session_state.project_id,))
+                
+                node_mastery = {row[0]: row[1] for row in cursor.fetchall()}
             
             # Create graph
             graph_viz = create_knowledge_graph(
@@ -333,11 +442,26 @@ def show_workspace():
                 node_mastery
             )
             
-            # Display graph
-            st.graphviz_chart(graph_viz.source)
+            # Display graph with custom height
+            st.graphviz_chart(graph_viz.source, use_container_width=True)
+            
+            # Add graph stats
+            total_nodes = len(graph_data['nodes'])
+            mastered_nodes = sum(1 for m in node_mastery.values() if m >= 0.7)
+            progress_pct = int((mastered_nodes / total_nodes) * 100) if total_nodes > 0 else 0
+            
+            st.markdown(f"""
+            **Overall Progress:** {progress_pct}% ({mastered_nodes}/{total_nodes} concepts mastered)
+            """)
+            
+            # Progress bar
+            st.progress(progress_pct / 100)
             
         except Exception as e:
             st.error(f"Error displaying graph: {str(e)}")
+            # Show raw graph data as fallback
+            with st.expander("Show raw graph data"):
+                st.json(graph_data)
 
 
 def show_tutor_session():

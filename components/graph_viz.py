@@ -32,39 +32,75 @@ def create_knowledge_graph(
     Create a Graphviz diagram for the knowledge graph
     
     Args:
-        nodes: List of node dictionaries with 'id' and 'label'
-        edges: List of edge dictionaries with 'source', 'target', and optional 'confidence'
+        nodes: List of node dictionaries with 'id', 'label', etc.
+        edges: List of edge dictionaries with 'source', 'target', etc.
         node_mastery: Dictionary mapping node IDs to mastery scores (0-1)
     
     Returns:
         Graphviz Digraph object
     """
-    # Create a new directed graph with left-to-right layout
-    dot = graphviz.Digraph(engine='dot', comment='Knowledge Graph')
+    # Create a new directed graph with Dagre layout
+    dot = graphviz.Digraph(
+        comment='Knowledge Graph',
+        engine='dot'  # Use dot engine for hierarchical layout
+    )
+    
+    # Configure graph for left-to-right layout
+    dot.attr(rankdir='LR')  # Left to Right layout
     
     # Configure graph attributes for better layout
-    dot.attr(rankdir='LR')  # Left to right layout
-    dot.attr('graph', ranksep='1.5', nodesep='0.5', fontname='Arial')
-    dot.attr('node', shape='box', style='rounded,filled', fontname='Arial', fontsize='12')
-    dot.attr('edge', fontname='Arial', fontsize='10')
+    dot.attr('graph', 
+             ranksep='1.5',      # Increase separation between ranks
+             nodesep='0.5',      # Node separation
+             fontname='Arial',
+             fontsize='12',
+             bgcolor='transparent'
+    )
+    
+    # Configure default node attributes
+    dot.attr('node', 
+             shape='box',
+             style='rounded,filled',
+             fontname='Arial',
+             fontsize='10',
+             margin='0.2',
+             penwidth='1.5'
+    )
+    
+    # Configure default edge attributes
+    dot.attr('edge',
+             fontname='Arial',
+             fontsize='9',
+             arrowsize='0.8'
+    )
     
     # Add nodes
     for node in nodes:
         node_id = node['id']
         label = node['label']
+        
+        # Get mastery score and calculate color
         mastery = node_mastery.get(node_id, 0.0)
+        fillcolor = calculate_color_gradient(mastery)
         
-        # Calculate color based on mastery
-        color = calculate_color_gradient(mastery)
+        # Determine font color based on mastery (for contrast)
+        fontcolor = 'black' if mastery < 0.5 else 'black'
         
-        # Add percentage to label
-        display_label = f"{label}\\n({int(mastery * 100)}%)"
+        # Add study time if available
+        if 'study_time_minutes' in node:
+            label += f"\\n({node['study_time_minutes']} min)"
         
+        # Add mastery percentage
+        mastery_pct = int(mastery * 100)
+        if mastery_pct > 0:
+            label += f"\\n{mastery_pct}% mastered"
+        
+        # Create node with styling
         dot.node(
-            node_id, 
-            display_label,
-            fillcolor=color,
-            fontcolor='black',
+            node_id,
+            label,
+            fillcolor=fillcolor,
+            fontcolor=fontcolor,
             tooltip=node.get('summary', '')
         )
     
@@ -72,29 +108,53 @@ def create_knowledge_graph(
     for edge in edges:
         source = edge['source']
         target = edge['target']
-        confidence = edge.get('confidence', 1.0)
         
         # Style based on confidence
-        if confidence >= 0.7:
+        confidence = edge.get('confidence', 1.0)
+        if confidence >= 0.8:
             style = 'solid'
-            color = 'black'
+            penwidth = '1.5'
+        elif confidence >= 0.5:
+            style = 'solid'
+            penwidth = '1.0'
         else:
             style = 'dashed'
-            color = 'gray'
+            penwidth = '1.0'
         
-        # Add rationale as edge label if present
-        label = edge.get('rationale', '')
-        if label and len(label) > 30:
-            label = label[:27] + '...'
-        
-        dot.edge(
-            source, 
-            target, 
-            style=style, 
-            color=color,
-            label=label if label else None,
-            fontsize='9'
-        )
+        # Add edge with optional label
+        rationale = edge.get('rationale', '')
+        if rationale and len(rationale) < 30:  # Only show short rationales
+            dot.edge(source, target, 
+                    label=rationale,
+                    style=style,
+                    penwidth=penwidth,
+                    color='#666666'
+            )
+        else:
+            dot.edge(source, target,
+                    style=style,
+                    penwidth=penwidth,
+                    color='#666666'
+            )
+    
+    return dot
+
+
+def render_graph_to_file(
+    graph: graphviz.Digraph, 
+    filename: str,
+    format: str = 'png'
+):
+    """
+    Render graph to a file
+    
+    Args:
+        graph: Graphviz Digraph object
+        filename: Output filename (without extension)
+        format: Output format (png, pdf, svg, etc.)
+    """
+    if filename and graph:
+        dot.render(filename, format=format, cleanup=True)
     
     return dot
 
