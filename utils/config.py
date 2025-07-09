@@ -6,7 +6,7 @@ Handles API key management, paths, and environment settings
 import json
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -37,16 +37,14 @@ def ensure_config_directory():
 
 
 def save_api_key(api_key: str):
-    """Save API key to local config file with secure permissions"""
+    """Save OpenAI API key to config file"""
     ensure_config_directory()
-    
     config = {"openai_api_key": api_key}
     
-    # Write config file
     with open(CONFIG_FILE, 'w') as f:
-        json.dump(config, f, indent=2)
+        json.dump(config, f)
     
-    # Set secure permissions (read/write for owner only)
+    # Set file permissions to 600 (rw-------)
     CONFIG_FILE.chmod(0o600)
 
 
@@ -91,21 +89,36 @@ def get_deep_research_response_path(project_id: str) -> Path:
     return get_project_directory(project_id) / "deep_research_response.json"
 
 
-def save_project_files(project_id: str, report_md: str, graph_json: dict, raw_response: dict):
-    """Save all project files to disk"""
-    project_dir = get_project_directory(project_id)
+def save_project_files(project_id: str, report_markdown: str, graph_data: Dict, full_result: Dict) -> str:
+    """
+    Save project files to disk
+    
+    Args:
+        project_id: UUID for the project
+        report_markdown: The markdown report content
+        graph_data: The graph dictionary
+        full_result: Full Deep Research result for backup
+    
+    Returns:
+        Path to the saved report file
+    """
+    # Create project directory
+    project_dir = PROJECTS_DIR / project_id
+    project_dir.mkdir(parents=True, exist_ok=True)
     
     # Save report
-    report_path = get_report_path(project_id)
-    report_path.write_text(report_md, encoding='utf-8')
+    report_path = project_dir / "report.md"
+    report_path.write_text(report_markdown, encoding='utf-8')
     
     # Save graph
-    graph_path = get_graph_path(project_id)
-    graph_path.write_text(json.dumps(graph_json, indent=2), encoding='utf-8')
+    graph_path = project_dir / "graph.json"
+    with open(graph_path, 'w', encoding='utf-8') as f:
+        json.dump(graph_data, f, indent=2)
     
-    # Save raw response
-    response_path = get_deep_research_response_path(project_id)
-    response_path.write_text(json.dumps(raw_response, indent=2), encoding='utf-8')
+    # Save full result as backup
+    backup_path = project_dir / "deep_research_result.json"
+    with open(backup_path, 'w', encoding='utf-8') as f:
+        json.dump(full_result, f, indent=2)
     
     return str(report_path)
 

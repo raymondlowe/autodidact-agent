@@ -17,7 +17,7 @@ You are a "Deep Research + Graph Builder" agent.
 
 Goal
 ====
-Given a user-supplied learning topic (and optional PDFs / URLs), you must:
+Given a user-supplied learning topic and time duration they want to invest, your goal is to make the optimal learning syllabus for them. You must:
 
 1. Investigate the topic thoroughly (use web_search_preview, code_interpreter, and
    any attached files).
@@ -68,11 +68,12 @@ Structural rules
 	1.	The graph is a DAG, not a linear list.
 	2.	Create an edge only if concept A must be learned before B.
 	3.	Aim for 2–4 independent threads (disjoint roots).
-	4.	≥ 25 % of nodes must have no prerequisites (roots) and ≥ 25 % must have
+	4.	≥ 10 % of nodes must have no prerequisites (roots) and ≥ 15 % must have
 no dependants (leaves).
 	5.	Average branching factor ≥ 1.3 (some nodes point to ≥ 2 children).
 	6.	Each node should be teachable in ≈ 30 minutes. If a concept exceeds
 45 min, split it; if < 15 min, merge upward.
+	7.	Each node must have 5-7 specific, measurable learning objectives.
 
 Additional rules for learning objectives:
 - Each node must have 5-7 learning objectives
@@ -98,13 +99,14 @@ def poll_background_job(client: OpenAI, job_id: str) -> Dict:
         time.sleep(DEEP_RESEARCH_POLL_INTERVAL)
 
 
-def run_deep_research(topic: str, client: OpenAI, existing_job_id: Optional[str] = None) -> Dict:
+def run_deep_research(topic: str, client: OpenAI, hours: Optional[int] = None, existing_job_id: Optional[str] = None) -> Dict:
     """
     Run Deep Research on a topic
     
     Args:
         topic: The learning topic
         client: OpenAI client instance
+        hours: Optional number of hours the user wants to invest
         existing_job_id: Optional job ID to retrieve results from
     
     Returns:
@@ -116,6 +118,12 @@ def run_deep_research(topic: str, client: OpenAI, existing_job_id: Optional[str]
         job = client.responses.retrieve(existing_job_id)
         content_block = job.output[-1].content[0]
     else:
+        # Prepare the user message with optional hours
+        user_message = f"Topic: {topic}"
+        if hours:
+            user_message += f"\nTarget study time: {hours} hours"
+        user_message += "\nPlease follow the developer instructions."
+        
         # Build input messages
         input_messages = [
             {
@@ -124,7 +132,7 @@ def run_deep_research(topic: str, client: OpenAI, existing_job_id: Optional[str]
             },
             {
                 "role": "user",
-                "content": [{"type": "input_text", "text": f"Topic: {topic}\nPlease follow the developer instructions."}]
+                "content": [{"type": "input_text", "text": user_message}]
             }
         ]
 

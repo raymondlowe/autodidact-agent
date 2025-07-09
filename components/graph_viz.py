@@ -99,34 +99,35 @@ def create_knowledge_graph(
     return dot
 
 
-def format_report_with_footnotes(markdown_text: str, footnotes_dict: Dict) -> str:
+def format_report_with_footnotes(report_md: str, footnotes: Dict) -> str:
     """
-    Convert [^1] style citations to proper markdown footnotes
+    Format markdown report with clickable footnotes
     
     Args:
-        markdown_text: The main report text with [^n] citations
-        footnotes_dict: Dictionary mapping footnote numbers to {title, url}
+        report_md: Raw markdown report with [^n] citations
+        footnotes: Dict mapping footnote numbers to {"title": ..., "url": ...}
     
     Returns:
-        Formatted markdown with footnotes section
+        Formatted markdown with footnote section
     """
-    formatted_text = markdown_text
+    # First, ensure footnotes keys are strings
+    str_footnotes = {str(k): v for k, v in footnotes.items()}
     
-    # Add footnotes section at the end
-    if footnotes_dict:
-        formatted_text += "\n\n---\n\n## References\n\n"
+    # Add footnotes section at the end if not already present
+    if "## References" not in report_md and "## Footnotes" not in report_md:
+        report_md += "\n\n---\n\n## References\n\n"
         
         # Sort footnotes by number
-        sorted_footnotes = sorted(
-            footnotes_dict.items(), 
-            key=lambda x: int(x[0]) if x[0].isdigit() else 0
-        )
+        sorted_footnotes = sorted(str_footnotes.items(), key=lambda x: int(x[0]))
         
-        for num, footnote in sorted_footnotes:
-            title = footnote.get('title', 'Unknown')
-            url = footnote.get('url', '#')
+        for num, ref in sorted_footnotes:
+            title = ref.get('title', 'Untitled')
+            url = ref.get('url', '#')
             
             # Format as markdown footnote
-            formatted_text += f"[^{num}]: [{title}]({url})\n\n"
+            if url and url != '#':
+                report_md += f"[^{num}]: [{title}]({url})\n\n"
+            else:
+                report_md += f"[^{num}]: {title}\n\n"
     
-    return formatted_text 
+    return report_md 
