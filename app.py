@@ -17,7 +17,9 @@ from backend.db import (
     create_project,
     save_graph_to_db,
     get_next_nodes,
-    get_db_connection
+    get_db_connection,
+    get_node_with_objectives,
+    save_transcript
 )
 from backend.jobs import (
     clarify_topic,
@@ -63,6 +65,16 @@ def init_session_state():
         st.session_state.clarification_state = None
     if "clarification_attempts" not in st.session_state:
         st.session_state.clarification_attempts = 0
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+    if "tutor_session_id" not in st.session_state:
+        st.session_state.tutor_session_id = None
+    if "turn_count" not in st.session_state:
+        st.session_state.turn_count = 0
+    if "current_phase" not in st.session_state:
+        st.session_state.current_phase = "greet"
+    if "has_previous_session" not in st.session_state:
+        st.session_state.has_previous_session = False
 
 
 def show_api_key_modal():
@@ -466,14 +478,146 @@ def show_workspace():
 
 def show_tutor_session():
     """Show the tutor session interface"""
-    # TODO: Implement tutor session
-    st.markdown("## 🎓 Tutor Session")
+    if not st.session_state.current_node:
+        st.error("No node selected for tutoring")
+        if st.button("Go Back"):
+            st.session_state.in_session = False
+            st.rerun()
+        return
     
-    if st.button("End Session (temporary)"):
-        st.session_state.in_session = False
-        st.rerun()
+    # Get node information
+    node_info = get_node_with_objectives(st.session_state.current_node)
+    if not node_info:
+        st.error("Node not found!")
+        return
     
-    st.info("Tutor session implementation coming in Phase 4")
+    # Header
+    st.markdown(f"# 🎓 Learning Session: {node_info['label']}")
+    
+    # Session info in sidebar
+    with st.sidebar:
+        st.markdown("### 📚 Session Info")
+        st.info(f"**Topic:** {node_info['label']}\n\n**Summary:** {node_info['summary']}")
+        
+        st.markdown("### 📋 Learning Objectives")
+        for i, obj in enumerate(node_info['learning_objectives']):
+            st.markdown(f"{i+1}. {obj['description']}")
+        
+        st.markdown("---")
+        
+        if st.button("🚪 Exit Session", type="secondary", use_container_width=True):
+            st.session_state.in_session = False
+            st.session_state.messages = []
+            st.rerun()
+    
+    # Initialize session
+    if "tutor_session_id" not in st.session_state:
+        st.session_state.tutor_session_id = str(uuid.uuid4())
+        st.session_state.messages = []
+        st.session_state.turn_count = 0
+        st.session_state.current_phase = "greet"
+        
+        # Check if user has previous sessions
+        with get_db_connection() as conn:
+            cursor = conn.execute(
+                "SELECT COUNT(*) FROM transcript WHERE session_id != ?",
+                (st.session_state.tutor_session_id,)
+            )
+            has_previous = cursor.fetchone()[0] > 0
+        
+        st.session_state.has_previous_session = has_previous
+    
+    # Chat interface
+    chat_container = st.container()
+    
+    # Display chat history
+    with chat_container:
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+    
+    # Input area
+    if prompt := st.chat_input("Your response...", key="tutor_chat"):
+        # Add user message
+        st.session_state.messages.append({
+            "role": "user",
+            "content": prompt
+        })
+        
+        # Save to transcript
+        save_transcript(
+            st.session_state.tutor_session_id,
+            st.session_state.turn_count,
+            "user",
+            prompt
+        )
+        st.session_state.turn_count += 1
+        
+        # Display user message
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        
+        # Run tutor graph
+        run_tutor_response()
+    
+    # If no messages yet, start the session
+    elif len(st.session_state.messages) == 0:
+        run_tutor_response()
+
+
+def run_tutor_response():
+    """Run the tutor graph to generate response"""
+    from backend.graph import create_tutor_graph, TutorState
+    
+    # Create the graph
+    tutor_graph = create_tutor_graph()
+    
+    # Initialize state
+    state = {
+        "session_id": st.session_state.tutor_session_id,
+        "node_id": st.session_state.current_node,
+        "turn_count": st.session_state.turn_count,
+        "has_previous_session": st.session_state.has_previous_session,
+        "messages": st.session_state.messages.copy(),
+        "learning_objectives": get_node_with_objectives(st.session_state.current_node)['learning_objectives'],
+        "lo_scores": {},
+        "current_phase": st.session_state.current_phase,
+        "node_info": get_node_with_objectives(st.session_state.current_node),
+        "project_id": st.session_state.project_id
+    }
+    
+    # Show thinking spinner
+    with st.spinner("🤔 Thinking..."):
+        try:
+            # Run the graph
+            result = tutor_graph.invoke(state)
+            
+            # Extract new messages
+            new_messages = result["messages"][len(st.session_state.messages):]
+            
+            # Update session state
+            st.session_state.messages = result["messages"]
+            st.session_state.turn_count = result["turn_count"]
+            
+            # Display new assistant messages
+            for msg in new_messages:
+                if msg["role"] == "assistant":
+                    with st.chat_message("assistant"):
+                        st.markdown(msg["content"])
+            
+            # Check if session is complete
+            if "lo_scores" in result and result["lo_scores"]:
+                # Session complete, show completion button
+                st.balloons()
+                if st.button("✅ Complete Session", type="primary"):
+                    st.session_state.in_session = False
+                    st.session_state.messages = []
+                    st.session_state.tutor_session_id = None
+                    st.rerun()
+                    
+        except Exception as e:
+            st.error(f"Error in tutor response: {str(e)}")
+            st.info("Try refreshing the page or starting a new session.")
 
 
 def main():
@@ -510,6 +654,8 @@ def main():
                     st.session_state.current_node = None
                     st.session_state.in_session = False
                     st.session_state.clarification_state = None
+                    st.session_state.messages = []
+                    st.session_state.tutor_session_id = None
                     st.rerun()
     
     # Main content area

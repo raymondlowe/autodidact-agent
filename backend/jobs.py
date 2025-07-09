@@ -172,35 +172,4 @@ def run_deep_research_job(topic: str, hours: Optional[int] = None) -> Dict:
         return result
         
     except Exception as e:
-        raise RuntimeError(f"Deep Research API call failed: {e}")
-
-
-# LangGraph node implementations
-def greet_node(state: Dict) -> Dict:
-    """Welcome message for first session"""
-    # TODO: Implement
-    return state
-
-
-def recap_node(state: Dict) -> Dict:
-    """2 recall questions from previous sessions"""
-    # TODO: Implement
-    return state
-
-
-def teach_node(state: Dict) -> Dict:
-    """Main teaching with mid-lesson check"""
-    # TODO: Implement
-    return state
-
-
-def quick_check_node(state: Dict) -> Dict:
-    """Final assessment question"""
-    # TODO: Implement
-    return state
-
-
-def grade_node(state: Dict) -> Dict:
-    """Grade the student's understanding of learning objectives"""
-    # TODO: Implement grading logic from implementation plan
-    return state 
+        raise RuntimeError(f"Deep Research API call failed: {e}") 
