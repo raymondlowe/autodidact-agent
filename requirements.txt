@@ -1,3 +1,14 @@
+# Core dependencies for Autodidact v0.1
+streamlit==1.46.0
+openai==1.93.2
+langgraph==0.5.1
+langchain>=0.3.26
+langchain-openai>=0.3.27
+networkx==3.5
+graphviz==0.21.0
+python-dotenv==1.1.1
+
+# Existing dependencies from scripts
 annotated-types==0.7.0
 anyio==4.9.0
 appnope==0.1.4
@@ -21,9 +32,7 @@ jupyter_client==8.6.3
 jupyter_core==5.8.1
 matplotlib-inline==0.1.7
 nest-asyncio==1.6.0
-networkx==3.5
-openai==1.93.2
-packaging==25.0
+packaging==24.2
 parso==0.8.4
 pexpect==4.9.0
 platformdirs==4.3.8
