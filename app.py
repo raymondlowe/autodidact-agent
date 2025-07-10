@@ -23,7 +23,11 @@ from backend.db import (
     save_transcript,
     get_latest_session_for_node,
     get_transcript_for_session,
-    get_all_projects
+    get_all_projects,
+    create_session,
+    has_previous_sessions,
+    complete_session,
+    get_session_stats
 )
 from backend.jobs import (
     clarify_topic,
@@ -524,6 +528,19 @@ def show_workspace():
             # Progress bar
             st.progress(progress_pct / 100)
             
+            # Session statistics
+            session_stats = get_session_stats(st.session_state.project_id)
+            if session_stats["total_sessions"] > 0:
+                st.markdown("---")
+                st.markdown("### 📈 Session Statistics")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Total Sessions", session_stats["total_sessions"])
+                with col2:
+                    st.metric("Completed", session_stats["completed_sessions"])
+                with col3:
+                    st.metric("Avg Score", f"{int(session_stats['average_score'] * 100)}%")
+            
         except Exception as e:
             st.error(f"Error displaying graph: {str(e)}")
             # Show raw graph data as fallback
@@ -568,7 +585,10 @@ def show_tutor_session():
     # Initialize or recover session
     if "tutor_session_id" not in st.session_state:
         # Check for existing session to recover
-        latest_session = get_latest_session_for_node(st.session_state.current_node)
+        latest_session = get_latest_session_for_node(
+            st.session_state.project_id, 
+            st.session_state.current_node
+        )
         
         if latest_session and st.checkbox("📂 Resume previous session?", value=True):
             # Recover from previous session
@@ -593,20 +613,19 @@ def show_tutor_session():
             st.info("✅ Previous session recovered!")
         else:
             # Start new session
-            st.session_state.tutor_session_id = str(uuid.uuid4())
+            st.session_state.tutor_session_id = create_session(
+                st.session_state.project_id,
+                st.session_state.current_node
+            )
             st.session_state.messages = []
             st.session_state.turn_count = 0
             st.session_state.current_phase = "greet"
         
         # Check if user has previous sessions
-        with get_db_connection() as conn:
-            cursor = conn.execute(
-                "SELECT COUNT(DISTINCT session_id) FROM transcript WHERE session_id != ?",
-                (st.session_state.tutor_session_id,)
-            )
-            has_previous = cursor.fetchone()[0] > 0
-        
-        st.session_state.has_previous_session = has_previous
+        st.session_state.has_previous_session = has_previous_sessions(
+            st.session_state.project_id,
+            st.session_state.tutor_session_id
+        )
     
     # Chat interface
     chat_container = st.container()
@@ -688,6 +707,12 @@ def run_tutor_response():
             
             # Check if session is complete
             if "lo_scores" in result and result["lo_scores"]:
+                # Calculate final score as average of all LO scores
+                final_score = sum(result["lo_scores"].values()) / len(result["lo_scores"])
+                
+                # Complete the session
+                complete_session(st.session_state.tutor_session_id, final_score)
+                
                 # Session complete, show completion button
                 st.balloons()
                 col1, col2 = st.columns(2)

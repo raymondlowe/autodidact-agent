@@ -1,20 +1,102 @@
-# Autodidact 🧠
+# Autodidact - AI-Powered Learning Assistant
 
-Autodidact is an open-source AI-powered learning assistant built for autodidacts—people who love to learn independently. The app helps you break down complex topics or books into a structured, auditable, and personalized learning journey.
+Autodidact is an AI-powered personalized learning assistant that creates custom study plans, provides interactive tutoring sessions, and tracks your learning progress.
 
-Autodidact supports two modes:
-- 🔍 Partially Autonomous Mode: Upload a textbook or PDF, and Autodidact will extract its structure, build a prerequisite-based knowledge graph, and generate 30-minute learning sessions to guide you through the material.
-- 🤖 Agentic Mode: Just tell Autodidact what you want to learn (e.g., “Bitcoin and Ethereum”), and it will ask clarifying questions, build a custom knowledge graph, gather resources, and plan a learning path—all powered by AI.
+## Features
 
-The system emphasizes transparency and user control, allowing you to toggle AI involvement up or down and audit your learning journey via the generated knowledge graph. Think of it as a blend of personal tutor, research assistant, and interactive syllabus—all in one.
+- 🔍 **Deep Research**: AI investigates your topic and creates comprehensive study plans
+- 📊 **Knowledge Graphs**: Visual representation of concepts and their prerequisites
+- 👨‍🏫 **AI Tutoring**: Personalized 30-minute learning sessions with an AI tutor
+- 📈 **Progress Tracking**: Monitor your mastery of each concept over time
+- 🔄 **Session Recovery**: Resume interrupted learning sessions
 
+## Installation
 
-## Some notes
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/autodidact.git
+cd autodidact
+```
 
-`python3 -m venv .venv`
-`source .venv/bin/activate`
-`pip install -r requirements.txt`
+2. Create and activate a virtual environment:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+```
 
-`python 02-topic-then-deep-research.py 'Foundations of Statistical Learning'`
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
 
-also have to first apply the openAI api key to the environment variable OPENAI_API_KEY. Note that to use such a thinking model, your organization needs to be verified. You can apply for verification [here]( https://platform.openai.com/settings/organization/general).
+4. Run the application:
+```bash
+streamlit run app.py
+```
+
+## Setup
+
+On first run, you'll need to provide your OpenAI API key. The app will guide you through this process and store your key securely at `~/.autodidact/.env.json`.
+
+## Database Schema
+
+The application uses SQLite with the following schema:
+
+- **project**: Learning projects with topics and metadata
+- **node**: Knowledge graph nodes (concepts to learn)
+- **edge**: Relationships between concepts
+- **learning_objective**: Specific objectives for each concept
+- **session**: Learning sessions linking projects and nodes
+- **transcript**: Conversation history for each session
+
+### Database Migration
+
+If you're upgrading from an earlier version, run the migration script:
+
+```bash
+python backend/migrate_db.py
+```
+
+This will update your database schema to include the new session tracking features.
+
+## Usage
+
+1. **Start a New Project**: Enter a topic you want to learn
+2. **Review the Plan**: Examine the generated knowledge graph and report
+3. **Begin Learning**: Start tutoring sessions for available topics
+4. **Track Progress**: Monitor your mastery levels across concepts
+
+## Project Structure
+
+```
+autodidact/
+├── app.py                 # Main Streamlit application
+├── backend/
+│   ├── db.py             # Database operations
+│   ├── jobs.py           # AI job processing
+│   ├── graph.py          # LangGraph tutor implementation
+│   ├── deep_research.py  # Deep research module
+│   └── migrate_db.py     # Database migration script
+├── components/
+│   └── graph_viz.py      # Graph visualization
+└── utils/
+    └── config.py         # Configuration management
+```
+
+## Development
+
+To contribute or modify Autodidact:
+
+1. Follow the installation steps above
+2. Make your changes
+3. Test thoroughly with various topics
+4. Submit a pull request
+
+## Requirements
+
+- Python 3.8+
+- OpenAI API key
+
+## License
+
+MIT License - see LICENSE file for details

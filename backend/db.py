@@ -7,7 +7,7 @@ import sqlite3
 import json
 import uuid
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Any
 from contextlib import contextmanager
 
 # Constants
@@ -75,13 +75,27 @@ def init_database():
         FOREIGN KEY (node_id) REFERENCES node(id)
     );
 
+    CREATE TABLE IF NOT EXISTS session (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        node_id TEXT NOT NULL,
+        session_number INTEGER NOT NULL,
+        status TEXT DEFAULT 'in_progress',
+        final_score REAL,
+        started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        completed_at TIMESTAMP,
+        FOREIGN KEY (project_id) REFERENCES project(id),
+        FOREIGN KEY (node_id) REFERENCES node(id)
+    );
+
     CREATE TABLE IF NOT EXISTS transcript (
         session_id TEXT NOT NULL,
         turn_idx INTEGER NOT NULL,
         role TEXT NOT NULL,
         content TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY (session_id, turn_idx)
+        PRIMARY KEY (session_id, turn_idx),
+        FOREIGN KEY (session_id) REFERENCES session(id)
     );
     
     -- Create indexes for common queries
@@ -89,6 +103,8 @@ def init_database():
     CREATE INDEX IF NOT EXISTS idx_node_original ON node(original_id);
     CREATE INDEX IF NOT EXISTS idx_edge_project ON edge(project_id);
     CREATE INDEX IF NOT EXISTS idx_lo_node ON learning_objective(node_id);
+    CREATE INDEX IF NOT EXISTS idx_session_project ON session(project_id);
+    CREATE INDEX IF NOT EXISTS idx_session_node ON session(node_id);
     CREATE INDEX IF NOT EXISTS idx_transcript_session ON transcript(session_id);
     """
     
@@ -121,54 +137,71 @@ def create_project(topic: str, report_path: str, graph_json: Dict, footnotes: Di
             raise RuntimeError(f"Failed to create project: {str(e)}")
 
 
-def save_graph_to_db(project_id: str, graph_data: Dict):
-    """Save graph nodes and edges to database with transaction support"""
+def save_graph_to_db(project_id: str, graph_data: Dict[str, Any]):
+    """Save graph nodes and edges to database"""
     with get_db_connection() as conn:
-        try:
-            conn.execute("BEGIN TRANSACTION")
+        # First, create nodes
+        for node in graph_data['nodes']:
+            node_id = str(uuid.uuid4())
+            conn.execute("""
+                INSERT INTO node (id, project_id, original_id, label, summary)
+                VALUES (?, ?, ?, ?, ?)
+            """, (node_id, project_id, node['id'], node['label'], node['summary']))
             
-            # Save nodes
-            for node in graph_data['nodes']:
-                node_id = str(uuid.uuid4())
+            # Save learning objectives
+            for obj in node.get('learning_objectives', []):
                 conn.execute("""
-                    INSERT INTO node (id, project_id, original_id, label, summary)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (
-                    node_id,
-                    project_id,
-                    node['id'],
-                    node['label'],
-                    node['summary']
-                ))
-                
-                # Save learning objectives
-                for lo_desc in node.get('learning_objectives', []):
-                    lo_id = str(uuid.uuid4())
-                    conn.execute("""
-                        INSERT INTO learning_objective (id, node_id, description)
-                        VALUES (?, ?, ?)
-                    """, (lo_id, node_id, lo_desc))
-            
-            # Save edges
-            for edge in graph_data['edges']:
-                conn.execute("""
-                    INSERT INTO edge (source, target, project_id, confidence, rationale)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (
-                    edge['source'],
-                    edge['target'],
-                    project_id,
-                    edge.get('confidence', 1.0),
-                    edge.get('rationale', '')
-                ))
-            
-            conn.commit()
-        except Exception as e:
-            conn.rollback()
-            raise RuntimeError(f"Failed to save graph to database: {str(e)}")
+                    INSERT INTO learning_objective (id, node_id, description)
+                    VALUES (?, ?, ?)
+                """, (str(uuid.uuid4()), node_id, obj['description']))
+        
+        # Then create edges
+        for edge in graph_data['edges']:
+            conn.execute("""
+                INSERT INTO edge (source, target, project_id, confidence, rationale)
+                VALUES (?, ?, ?, ?, ?)
+            """, (edge['source'], edge['target'], project_id, 
+                 edge.get('confidence'), edge.get('rationale')))
+        
+        conn.commit()
 
 
-def get_next_nodes(project_id: str) -> List[Dict]:
+def create_session(project_id: str, node_id: str) -> str:
+    """Create a new learning session and return its ID"""
+    session_id = str(uuid.uuid4())
+    
+    with get_db_connection() as conn:
+        # Get the session number for this project
+        cursor = conn.execute("""
+            SELECT COUNT(*) + 1 FROM session WHERE project_id = ?
+        """, (project_id,))
+        session_number = cursor.fetchone()[0]
+        
+        # Create the session
+        conn.execute("""
+            INSERT INTO session (id, project_id, node_id, session_number)
+            VALUES (?, ?, ?, ?)
+        """, (session_id, project_id, node_id, session_number))
+        
+        conn.commit()
+    
+    return session_id
+
+
+def complete_session(session_id: str, final_score: float):
+    """Mark a session as completed with final score"""
+    with get_db_connection() as conn:
+        conn.execute("""
+            UPDATE session 
+            SET status = 'completed', 
+                final_score = ?,
+                completed_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (final_score, session_id))
+        conn.commit()
+
+
+def get_next_nodes(project_id: str) -> List[Dict[str, Any]]:
     """
     Get up to 2 lowest-mastery unlocked nodes.
     A node is unlocked if all its prerequisites have mastery >= MASTERY_THRESHOLD
@@ -196,60 +229,48 @@ def get_next_nodes(project_id: str) -> List[Dict]:
 
 
 def update_mastery(node_id: str, lo_scores: Dict[str, float]):
-    """Update learning objective and node mastery scores with error handling"""
+    """Update learning objective and node mastery scores"""
     with get_db_connection() as conn:
-        try:
-            conn.execute("BEGIN TRANSACTION")
-            
-            # Update each LO mastery with simple averaging
-            for lo_id, score in lo_scores.items():
-                # Get current mastery
-                cursor = conn.execute(
-                    "SELECT mastery FROM learning_objective WHERE id = ?", 
-                    (lo_id,)
-                )
-                row = cursor.fetchone()
-                if row:
-                    old_mastery = row[0]
-                    new_mastery = (old_mastery + score) / 2
-                    
-                    conn.execute(
-                        "UPDATE learning_objective SET mastery = ? WHERE id = ?",
-                        (new_mastery, lo_id)
-                    )
-            
-            # Calculate node mastery as average of all LOs
-            cursor = conn.execute("""
-                SELECT AVG(mastery) as avg_mastery
-                FROM learning_objective
-                WHERE node_id = ?
-            """, (node_id,))
-            
-            avg_mastery = cursor.fetchone()[0] or 0.0
-            
-            conn.execute(
-                "UPDATE node SET mastery = ? WHERE id = ?",
-                (avg_mastery, node_id)
+        # Update each LO mastery with simple averaging
+        for lo_id, score in lo_scores.items():
+            # Get current mastery
+            cursor = conn.execute(
+                "SELECT mastery FROM learning_objective WHERE id = ?", 
+                (lo_id,)
             )
-            
-            conn.commit()
-        except Exception as e:
-            conn.rollback()
-            raise RuntimeError(f"Failed to update mastery scores: {str(e)}")
+            row = cursor.fetchone()
+            if row:
+                old_mastery = row[0]
+                new_mastery = (old_mastery + score) / 2
+                
+                conn.execute(
+                    "UPDATE learning_objective SET mastery = ? WHERE id = ?",
+                    (new_mastery, lo_id)
+                )
+        
+        # Calculate node mastery as average of all LOs
+        cursor = conn.execute("""
+            SELECT AVG(mastery) FROM learning_objective WHERE node_id = ?
+        """, (node_id,))
+        avg_mastery = cursor.fetchone()[0] or 0.0
+        
+        # Update node mastery
+        conn.execute(
+            "UPDATE node SET mastery = ? WHERE id = ?",
+            (avg_mastery, node_id)
+        )
+        
+        conn.commit()
 
 
 def save_transcript(session_id: str, turn_idx: int, role: str, content: str):
-    """Save a conversation turn to the transcript with error handling"""
+    """Save a transcript entry to the database"""
     with get_db_connection() as conn:
-        try:
-            conn.execute("""
-                INSERT INTO transcript (session_id, turn_idx, role, content)
-                VALUES (?, ?, ?, ?)
-            """, (session_id, turn_idx, role, content))
-            conn.commit()
-        except Exception as e:
-            # Log but don't fail the session
-            print(f"Warning: Failed to save transcript: {str(e)}")
+        conn.execute("""
+            INSERT INTO transcript (session_id, turn_idx, role, content)
+            VALUES (?, ?, ?, ?)
+        """, (session_id, turn_idx, role, content))
+        conn.commit()
 
 
 def get_project(project_id: str) -> Optional[Dict]:
@@ -289,57 +310,107 @@ def get_node_with_objectives(node_id: str) -> Optional[Dict]:
         return node_dict
 
 
-def get_transcript_for_session(session_id: str) -> List[Dict]:
-    """Get all transcript entries for a session (for recovery)"""
+def get_transcript_for_session(session_id: str) -> List[Dict[str, Any]]:
+    """Get all transcript entries for a session"""
     with get_db_connection() as conn:
         cursor = conn.execute("""
             SELECT turn_idx, role, content 
             FROM transcript 
-            WHERE session_id = ?
+            WHERE session_id = ? 
             ORDER BY turn_idx
         """, (session_id,))
-        return [dict(row) for row in cursor.fetchall()]
+        
+        return [
+            {"turn_idx": row[0], "role": row[1], "content": row[2]}
+            for row in cursor.fetchall()
+        ]
 
 
-def get_latest_session_for_node(node_id: str) -> Optional[str]:
-    """Get the most recent session ID for a node (for recovery)"""
+def get_latest_session_for_node(project_id: str, node_id: str) -> Optional[str]:
+    """Get the most recent incomplete session for a node in a project"""
     with get_db_connection() as conn:
         cursor = conn.execute("""
-            SELECT DISTINCT t.session_id 
-            FROM transcript t
-            WHERE t.session_id IN (
-                SELECT session_id FROM transcript 
-                WHERE content LIKE '%' || (SELECT label FROM node WHERE id = ?) || '%'
-            )
-            ORDER BY t.created_at DESC
+            SELECT id 
+            FROM session 
+            WHERE project_id = ? 
+              AND node_id = ?
+              AND status = 'in_progress'
+            ORDER BY started_at DESC 
             LIMIT 1
-        """, (node_id,))
-        row = cursor.fetchone()
-        return row[0] if row else None
+        """, (project_id, node_id))
+        
+        result = cursor.fetchone()
+        return result[0] if result else None
 
 
-def get_all_projects() -> List[Dict]:
-    """Get all projects ordered by creation date"""
+def get_all_projects() -> List[Dict[str, Any]]:
+    """Get all projects with basic stats"""
     with get_db_connection() as conn:
         cursor = conn.execute("""
-            SELECT id, topic, created_at,
-                   (SELECT COUNT(*) FROM node WHERE project_id = p.id AND mastery >= ?) as mastered_nodes,
-                   (SELECT COUNT(*) FROM node WHERE project_id = p.id) as total_nodes
+            SELECT 
+                p.id,
+                p.topic,
+                p.created_at,
+                COUNT(DISTINCT n.id) as total_nodes,
+                COUNT(DISTINCT CASE WHEN n.mastery >= 0.7 THEN n.id END) as mastered_nodes,
+                ROUND(AVG(n.mastery) * 100) as progress
             FROM project p
-            ORDER BY created_at DESC
-        """, (MASTERY_THRESHOLD,))
+            LEFT JOIN node n ON p.id = n.project_id
+            GROUP BY p.id
+            ORDER BY p.created_at DESC
+        """)
         
-        projects = []
-        for row in cursor.fetchall():
-            project = dict(row)
-            # Calculate progress percentage
-            if project['total_nodes'] > 0:
-                project['progress'] = int((project['mastered_nodes'] / project['total_nodes']) * 100)
-            else:
-                project['progress'] = 0
-            projects.append(project)
+        return [
+            {
+                "id": row[0],
+                "topic": row[1],
+                "created_at": row[2],
+                "total_nodes": row[3],
+                "mastered_nodes": row[4],
+                "progress": int(row[5] or 0)
+            }
+            for row in cursor.fetchall()
+        ]
+
+
+def has_previous_sessions(project_id: str, exclude_session_id: Optional[str] = None) -> bool:
+    """Check if a project has any completed sessions (excluding the given session)"""
+    with get_db_connection() as conn:
+        query = """
+            SELECT COUNT(*) 
+            FROM session 
+            WHERE project_id = ? 
+              AND status = 'completed'
+        """
+        params = [project_id]
         
-        return projects
+        if exclude_session_id:
+            query += " AND id != ?"
+            params.append(exclude_session_id)
+        
+        cursor = conn.execute(query, params)
+        count = cursor.fetchone()[0]
+        return count > 0
+
+
+def get_session_stats(project_id: str) -> Dict[str, Any]:
+    """Get session statistics for a project"""
+    with get_db_connection() as conn:
+        cursor = conn.execute("""
+            SELECT 
+                COUNT(*) as total_sessions,
+                COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_sessions,
+                AVG(CASE WHEN status = 'completed' THEN final_score END) as avg_score
+            FROM session
+            WHERE project_id = ?
+        """, (project_id,))
+        
+        row = cursor.fetchone()
+        return {
+            "total_sessions": row[0],
+            "completed_sessions": row[1],
+            "average_score": round(row[2], 2) if row[2] else 0
+        }
 
 
 # Initialize database on module import
