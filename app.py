@@ -19,7 +19,9 @@ from backend.db import (
     get_next_nodes,
     get_db_connection,
     get_node_with_objectives,
-    save_transcript
+    save_transcript,
+    get_latest_session_for_node,
+    get_transcript_for_session
 )
 from backend.jobs import (
     clarify_topic,
@@ -37,6 +39,8 @@ from components.graph_viz import (
     create_knowledge_graph,
     format_report_with_footnotes
 )
+
+import openai
 
 
 # Page configuration
@@ -78,36 +82,85 @@ def init_session_state():
 
 
 def show_api_key_modal():
-    """Show modal for API key setup"""
+    """Show enhanced modal for API key setup"""
     with st.container():
-        st.markdown("### 🔑 API Key Setup")
-        st.info(
-            "Autodidact requires an OpenAI API key to function. "
-            "Your key will be stored locally and securely on your machine."
-        )
+        st.markdown("## 🔑 Welcome to Autodidact!")
+        
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.markdown("""
+            ### Getting Started
+            
+            Autodidact is an AI-powered learning assistant that creates personalized study plans 
+            and provides interactive tutoring sessions.
+            
+            **To get started, you'll need an OpenAI API key.**
+            
+            1. Click "Get API Key" to create one (if you don't have one)
+            2. Enter your API key below
+            3. Your key will be stored securely on your local machine
+            
+            **Features you'll unlock:**
+            - 🔍 Deep research on any topic
+            - 📊 Visual knowledge graphs
+            - 👨‍🏫 Personalized AI tutoring
+            - 📈 Progress tracking
+            """)
+        
+        with col2:
+            st.info("""
+            **Privacy Note:**
+            
+            Your API key is stored locally in:
+            `~/.autodidact/.env.json`
+            
+            It's never sent to any server except OpenAI's API.
+            """)
+        
+        st.markdown("---")
         
         api_key = st.text_input(
             "Enter your OpenAI API key:",
             type="password",
+            placeholder="sk-...",
             help="Your API key will be stored in ~/.autodidact/.env.json with secure permissions"
         )
         
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns([1, 1, 1])
         with col1:
-            if st.button("Save API Key", type="primary"):
+            if st.button("💾 Save API Key", type="primary", use_container_width=True):
                 if api_key and api_key.startswith("sk-"):
-                    save_api_key(api_key)
-                    st.session_state.api_key = api_key
-                    st.success("API key saved successfully!")
-                    st.rerun()
+                    try:
+                        # Test the API key
+                        test_client = OpenAI(api_key=api_key)
+                        test_client.models.list()  # Quick test call
+                        
+                        # If successful, save it
+                        save_api_key(api_key)
+                        st.session_state.api_key = api_key
+                        st.success("✅ API key validated and saved successfully!")
+                        time.sleep(1)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Invalid API key: {str(e)}")
                 else:
                     st.error("Please enter a valid OpenAI API key (should start with 'sk-')")
         
         with col2:
             st.link_button(
-                "Get API Key",
+                "🔗 Get API Key",
                 "https://platform.openai.com/api-keys",
-                help="Click to open OpenAI's API key page"
+                help="Click to open OpenAI's API key page",
+                use_container_width=True
+            )
+        
+        with col3:
+            st.link_button(
+                "📖 Pricing Info",
+                "https://openai.com/pricing",
+                help="View OpenAI's pricing details",
+                use_container_width=True
             )
 
 
@@ -477,7 +530,7 @@ def show_workspace():
 
 
 def show_tutor_session():
-    """Show the tutor session interface"""
+    """Show the tutor session interface with session recovery"""
     if not st.session_state.current_node:
         st.error("No node selected for tutoring")
         if st.button("Go Back"):
@@ -510,17 +563,43 @@ def show_tutor_session():
             st.session_state.messages = []
             st.rerun()
     
-    # Initialize session
+    # Initialize or recover session
     if "tutor_session_id" not in st.session_state:
-        st.session_state.tutor_session_id = str(uuid.uuid4())
-        st.session_state.messages = []
-        st.session_state.turn_count = 0
-        st.session_state.current_phase = "greet"
+        # Check for existing session to recover
+        latest_session = get_latest_session_for_node(st.session_state.current_node)
+        
+        if latest_session and st.checkbox("📂 Resume previous session?", value=True):
+            # Recover from previous session
+            st.session_state.tutor_session_id = latest_session
+            
+            # Load transcript
+            transcript = get_transcript_for_session(latest_session)
+            st.session_state.messages = [
+                {"role": entry["role"], "content": entry["content"]}
+                for entry in transcript
+            ]
+            st.session_state.turn_count = len(transcript)
+            
+            # Determine phase from transcript
+            if any("Let's see what you've learned" in msg["content"] for msg in st.session_state.messages):
+                st.session_state.current_phase = "grade"
+            elif len([m for m in st.session_state.messages if m["role"] == "user"]) >= 2:
+                st.session_state.current_phase = "quick_check"
+            else:
+                st.session_state.current_phase = "teach"
+            
+            st.info("✅ Previous session recovered!")
+        else:
+            # Start new session
+            st.session_state.tutor_session_id = str(uuid.uuid4())
+            st.session_state.messages = []
+            st.session_state.turn_count = 0
+            st.session_state.current_phase = "greet"
         
         # Check if user has previous sessions
         with get_db_connection() as conn:
             cursor = conn.execute(
-                "SELECT COUNT(*) FROM transcript WHERE session_id != ?",
+                "SELECT COUNT(DISTINCT session_id) FROM transcript WHERE session_id != ?",
                 (st.session_state.tutor_session_id,)
             )
             has_previous = cursor.fetchone()[0] > 0
@@ -566,7 +645,7 @@ def show_tutor_session():
 
 
 def run_tutor_response():
-    """Run the tutor graph to generate response"""
+    """Run the tutor graph to generate response with better error handling"""
     from backend.graph import create_tutor_graph, TutorState
     
     # Create the graph
@@ -609,15 +688,44 @@ def run_tutor_response():
             if "lo_scores" in result and result["lo_scores"]:
                 # Session complete, show completion button
                 st.balloons()
-                if st.button("✅ Complete Session", type="primary"):
-                    st.session_state.in_session = False
-                    st.session_state.messages = []
-                    st.session_state.tutor_session_id = None
-                    st.rerun()
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("✅ Complete Session", type="primary", use_container_width=True):
+                        st.session_state.in_session = False
+                        st.session_state.messages = []
+                        st.session_state.tutor_session_id = None
+                        st.rerun()
+                with col2:
+                    if st.button("📊 View Progress", type="secondary", use_container_width=True):
+                        st.session_state.in_session = False
+                        st.session_state.messages = []
+                        st.session_state.tutor_session_id = None
+                        st.rerun()
                     
+        except openai.AuthenticationError:
+            st.error("❌ API key authentication failed. Please check your API key.")
+            with st.expander("🔧 Update API Key"):
+                new_key = st.text_input("Enter new API key:", type="password")
+                if st.button("Update"):
+                    if new_key and new_key.startswith("sk-"):
+                        save_api_key(new_key)
+                        st.session_state.api_key = new_key
+                        st.rerun()
+        except openai.RateLimitError:
+            st.error("⏳ Rate limit reached. Please wait a moment and try again.")
+            st.info("Consider upgrading your OpenAI plan for higher rate limits.")
         except Exception as e:
-            st.error(f"Error in tutor response: {str(e)}")
+            st.error(f"❌ Error in tutor response: {str(e)}")
             st.info("Try refreshing the page or starting a new session.")
+            
+            # Show debug info in expander
+            with st.expander("🐛 Debug Information"):
+                st.json({
+                    "session_id": st.session_state.tutor_session_id,
+                    "turn_count": st.session_state.turn_count,
+                    "current_phase": st.session_state.current_phase,
+                    "message_count": len(st.session_state.messages)
+                })
 
 
 def main():

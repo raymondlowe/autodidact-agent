@@ -5,11 +5,45 @@ Contains: clarifier agent, deep research wrapper, grader, and tutor nodes
 
 import json
 import re
+import time
 from typing import Dict, List, Optional
 import openai
 from openai import OpenAI
 from utils.config import CHAT_MODEL, load_api_key
 from utils.deep_research import run_deep_research as deep_research_api
+
+
+# Constants for retry logic
+MAX_RETRIES = 3
+RETRY_DELAY = 2  # seconds
+
+
+def retry_api_call(func, *args, max_retries=MAX_RETRIES, **kwargs):
+    """Retry API calls with exponential backoff"""
+    last_error = None
+    
+    for attempt in range(max_retries):
+        try:
+            return func(*args, **kwargs)
+        except openai.RateLimitError as e:
+            wait_time = RETRY_DELAY * (2 ** attempt)
+            print(f"Rate limit hit, waiting {wait_time} seconds...")
+            time.sleep(wait_time)
+            last_error = e
+        except openai.APIError as e:
+            if attempt < max_retries - 1:
+                wait_time = RETRY_DELAY * (2 ** attempt)
+                print(f"API error, retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+                last_error = e
+            else:
+                raise
+        except Exception as e:
+            # Don't retry on non-API errors
+            raise
+    
+    # If we get here, all retries failed
+    raise RuntimeError(f"Failed after {max_retries} attempts. Last error: {str(last_error)}")
 
 
 def clarify_topic(topic: str, hours: Optional[int] = None) -> Dict:
@@ -45,7 +79,7 @@ def clarify_topic(topic: str, hours: Optional[int] = None) -> Dict:
     # Get API key
     api_key = load_api_key()
     if not api_key:
-        raise ValueError("OpenAI API key not found")
+        raise ValueError("OpenAI API key not found. Please configure your API key in the sidebar.")
     
     # Create client
     client = OpenAI(api_key=api_key)
@@ -56,16 +90,19 @@ def clarify_topic(topic: str, hours: Optional[int] = None) -> Dict:
         user_msg += f"\nUser wants to spend {hours} hours learning this."
     
     try:
-        # Call OpenAI API
-        response = client.chat.completions.create(
-            model=CHAT_MODEL,
-            messages=[
-                {"role": "system", "content": clarification_prompt},
-                {"role": "user", "content": user_msg}
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.7
-        )
+        # Call OpenAI API with retry logic
+        def make_clarifier_call():
+            return client.chat.completions.create(
+                model=CHAT_MODEL,
+                messages=[
+                    {"role": "system", "content": clarification_prompt},
+                    {"role": "user", "content": user_msg}
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.7
+            )
+        
+        response = retry_api_call(make_clarifier_call)
         
         # Parse response
         result = json.loads(response.choices[0].message.content)
@@ -84,8 +121,12 @@ def clarify_topic(topic: str, hours: Optional[int] = None) -> Dict:
         
     except json.JSONDecodeError as e:
         raise RuntimeError(f"Failed to parse clarifier response: {e}")
+    except openai.AuthenticationError:
+        raise RuntimeError("Invalid API key. Please check your OpenAI API key.")
+    except openai.PermissionDeniedError:
+        raise RuntimeError("API key doesn't have access to the required model.")
     except Exception as e:
-        raise RuntimeError(f"Clarifier API call failed: {e}")
+        raise RuntimeError(f"Clarifier API call failed: {str(e)}")
 
 
 def is_skip_response(response: str) -> bool:
@@ -127,15 +168,17 @@ def process_clarification_responses(questions: List[str], responses: List[str]) 
     qa_text = "\n\n".join(valid_responses)
     
     try:
-        response = client.chat.completions.create(
-            model=CHAT_MODEL,
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that refines learning topics based on user input."},
-                {"role": "user", "content": refinement_prompt.format(qa_text=qa_text)}
-            ],
-            temperature=0.7
-        )
+        def make_refinement_call():
+            return client.chat.completions.create(
+                model=CHAT_MODEL,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that refines learning topics based on user input."},
+                    {"role": "user", "content": refinement_prompt.format(qa_text=qa_text)}
+                ],
+                temperature=0.7
+            )
         
+        response = retry_api_call(make_refinement_call)
         return response.choices[0].message.content.strip()
         
     except Exception as e:
@@ -144,7 +187,7 @@ def process_clarification_responses(questions: List[str], responses: List[str]) 
 
 def run_deep_research_job(topic: str, hours: Optional[int] = None) -> Dict:
     """
-    Wrapper for Deep Research API call.
+    Wrapper for Deep Research API call with error handling and partial result recovery.
     Adapted from 02-topic-then-deep-research.py
     
     Returns:
@@ -153,7 +196,7 @@ def run_deep_research_job(topic: str, hours: Optional[int] = None) -> Dict:
     # Get API key and create client
     api_key = load_api_key()
     if not api_key:
-        raise ValueError("OpenAI API key not found")
+        raise ValueError("OpenAI API key not found. Please configure your API key.")
     
     client = OpenAI(api_key=api_key)
     
@@ -163,13 +206,45 @@ def run_deep_research_job(topic: str, hours: Optional[int] = None) -> Dict:
         
         # Validate result has required fields
         if "report_markdown" not in result:
-            raise ValueError("Missing report_markdown in Deep Research result")
+            # Try to salvage partial results
+            if "graph" in result:
+                result["report_markdown"] = f"# {topic}\n\n*Note: Report generation failed, but knowledge graph was created successfully.*"
+            else:
+                raise ValueError("Missing report_markdown in Deep Research result")
+        
         if "graph" not in result:
             raise ValueError("Missing graph in Deep Research result")
+        
+        # Ensure graph has required structure
+        if "nodes" not in result["graph"]:
+            result["graph"]["nodes"] = []
+        if "edges" not in result["graph"]:
+            result["graph"]["edges"] = []
+        
         if "footnotes" not in result:
             result["footnotes"] = {}  # Default to empty if missing
         
+        # Validate nodes have learning objectives
+        for node in result["graph"]["nodes"]:
+            if "learning_objectives" not in node or not node["learning_objectives"]:
+                # Generate placeholder objectives if missing
+                node["learning_objectives"] = [
+                    f"Understand the key concepts of {node['label']}",
+                    f"Apply {node['label']} principles in practice",
+                    f"Analyze relationships between {node['label']} and related topics",
+                    f"Evaluate different approaches to {node['label']}",
+                    f"Create solutions using {node['label']} knowledge"
+                ]
+        
         return result
         
+    except openai.AuthenticationError:
+        raise RuntimeError("Invalid API key. Please check your OpenAI API key.")
+    except openai.PermissionDeniedError:
+        raise RuntimeError("API key doesn't have access to Deep Research model.")
+    except openai.RateLimitError:
+        raise RuntimeError("Rate limit exceeded. Please try again in a few minutes.")
+    except openai.APIError as e:
+        raise RuntimeError(f"OpenAI API error: {str(e)}")
     except Exception as e:
-        raise RuntimeError(f"Deep Research API call failed: {e}") 
+        raise RuntimeError(f"Deep Research failed: {str(e)}") 

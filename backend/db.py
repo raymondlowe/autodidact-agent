@@ -102,60 +102,70 @@ def create_project(topic: str, report_path: str, graph_json: Dict, footnotes: Di
     project_id = str(uuid.uuid4())
     
     with get_db_connection() as conn:
-        conn.execute("""
-            INSERT INTO project (id, topic, report_path, graph_json, footnotes_json)
-            VALUES (?, ?, ?, ?, ?)
-        """, (
-            project_id,
-            topic,
-            report_path,
-            json.dumps(graph_json),
-            json.dumps(footnotes)
-        ))
-        conn.commit()
-    
-    return project_id
+        try:
+            conn.execute("BEGIN TRANSACTION")
+            conn.execute("""
+                INSERT INTO project (id, topic, report_path, graph_json, footnotes_json)
+                VALUES (?, ?, ?, ?, ?)
+            """, (
+                project_id,
+                topic,
+                report_path,
+                json.dumps(graph_json),
+                json.dumps(footnotes)
+            ))
+            conn.commit()
+            return project_id
+        except Exception as e:
+            conn.rollback()
+            raise RuntimeError(f"Failed to create project: {str(e)}")
 
 
 def save_graph_to_db(project_id: str, graph_data: Dict):
-    """Save graph nodes and edges to database"""
+    """Save graph nodes and edges to database with transaction support"""
     with get_db_connection() as conn:
-        # Save nodes
-        for node in graph_data['nodes']:
-            node_id = str(uuid.uuid4())
-            conn.execute("""
-                INSERT INTO node (id, project_id, original_id, label, summary)
-                VALUES (?, ?, ?, ?, ?)
-            """, (
-                node_id,
-                project_id,
-                node['id'],
-                node['label'],
-                node['summary']
-            ))
+        try:
+            conn.execute("BEGIN TRANSACTION")
             
-            # Save learning objectives
-            for lo_desc in node.get('learning_objectives', []):
-                lo_id = str(uuid.uuid4())
+            # Save nodes
+            for node in graph_data['nodes']:
+                node_id = str(uuid.uuid4())
                 conn.execute("""
-                    INSERT INTO learning_objective (id, node_id, description)
-                    VALUES (?, ?, ?)
-                """, (lo_id, node_id, lo_desc))
-        
-        # Save edges
-        for edge in graph_data['edges']:
-            conn.execute("""
-                INSERT INTO edge (source, target, project_id, confidence, rationale)
-                VALUES (?, ?, ?, ?, ?)
-            """, (
-                edge['source'],
-                edge['target'],
-                project_id,
-                edge.get('confidence', 1.0),
-                edge.get('rationale', '')
-            ))
-        
-        conn.commit()
+                    INSERT INTO node (id, project_id, original_id, label, summary)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (
+                    node_id,
+                    project_id,
+                    node['id'],
+                    node['label'],
+                    node['summary']
+                ))
+                
+                # Save learning objectives
+                for lo_desc in node.get('learning_objectives', []):
+                    lo_id = str(uuid.uuid4())
+                    conn.execute("""
+                        INSERT INTO learning_objective (id, node_id, description)
+                        VALUES (?, ?, ?)
+                    """, (lo_id, node_id, lo_desc))
+            
+            # Save edges
+            for edge in graph_data['edges']:
+                conn.execute("""
+                    INSERT INTO edge (source, target, project_id, confidence, rationale)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (
+                    edge['source'],
+                    edge['target'],
+                    project_id,
+                    edge.get('confidence', 1.0),
+                    edge.get('rationale', '')
+                ))
+            
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            raise RuntimeError(f"Failed to save graph to database: {str(e)}")
 
 
 def get_next_nodes(project_id: str) -> List[Dict]:
@@ -186,50 +196,60 @@ def get_next_nodes(project_id: str) -> List[Dict]:
 
 
 def update_mastery(node_id: str, lo_scores: Dict[str, float]):
-    """Update learning objective and node mastery scores"""
+    """Update learning objective and node mastery scores with error handling"""
     with get_db_connection() as conn:
-        # Update each LO mastery with simple averaging
-        for lo_id, score in lo_scores.items():
-            # Get current mastery
-            cursor = conn.execute(
-                "SELECT mastery FROM learning_objective WHERE id = ?", 
-                (lo_id,)
-            )
-            row = cursor.fetchone()
-            if row:
-                old_mastery = row[0]
-                new_mastery = (old_mastery + score) / 2
-                
-                conn.execute(
-                    "UPDATE learning_objective SET mastery = ? WHERE id = ?",
-                    (new_mastery, lo_id)
+        try:
+            conn.execute("BEGIN TRANSACTION")
+            
+            # Update each LO mastery with simple averaging
+            for lo_id, score in lo_scores.items():
+                # Get current mastery
+                cursor = conn.execute(
+                    "SELECT mastery FROM learning_objective WHERE id = ?", 
+                    (lo_id,)
                 )
-        
-        # Calculate node mastery as average of all LOs
-        cursor = conn.execute("""
-            SELECT AVG(mastery) as avg_mastery
-            FROM learning_objective
-            WHERE node_id = ?
-        """, (node_id,))
-        
-        avg_mastery = cursor.fetchone()[0] or 0.0
-        
-        conn.execute(
-            "UPDATE node SET mastery = ? WHERE id = ?",
-            (avg_mastery, node_id)
-        )
-        
-        conn.commit()
+                row = cursor.fetchone()
+                if row:
+                    old_mastery = row[0]
+                    new_mastery = (old_mastery + score) / 2
+                    
+                    conn.execute(
+                        "UPDATE learning_objective SET mastery = ? WHERE id = ?",
+                        (new_mastery, lo_id)
+                    )
+            
+            # Calculate node mastery as average of all LOs
+            cursor = conn.execute("""
+                SELECT AVG(mastery) as avg_mastery
+                FROM learning_objective
+                WHERE node_id = ?
+            """, (node_id,))
+            
+            avg_mastery = cursor.fetchone()[0] or 0.0
+            
+            conn.execute(
+                "UPDATE node SET mastery = ? WHERE id = ?",
+                (avg_mastery, node_id)
+            )
+            
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            raise RuntimeError(f"Failed to update mastery scores: {str(e)}")
 
 
 def save_transcript(session_id: str, turn_idx: int, role: str, content: str):
-    """Save a conversation turn to the transcript"""
+    """Save a conversation turn to the transcript with error handling"""
     with get_db_connection() as conn:
-        conn.execute("""
-            INSERT INTO transcript (session_id, turn_idx, role, content)
-            VALUES (?, ?, ?, ?)
-        """, (session_id, turn_idx, role, content))
-        conn.commit()
+        try:
+            conn.execute("""
+                INSERT INTO transcript (session_id, turn_idx, role, content)
+                VALUES (?, ?, ?, ?)
+            """, (session_id, turn_idx, role, content))
+            conn.commit()
+        except Exception as e:
+            # Log but don't fail the session
+            print(f"Warning: Failed to save transcript: {str(e)}")
 
 
 def get_project(project_id: str) -> Optional[Dict]:
@@ -267,6 +287,35 @@ def get_node_with_objectives(node_id: str) -> Optional[Dict]:
         node_dict['learning_objectives'] = [dict(row) for row in cursor.fetchall()]
         
         return node_dict
+
+
+def get_transcript_for_session(session_id: str) -> List[Dict]:
+    """Get all transcript entries for a session (for recovery)"""
+    with get_db_connection() as conn:
+        cursor = conn.execute("""
+            SELECT turn_idx, role, content 
+            FROM transcript 
+            WHERE session_id = ?
+            ORDER BY turn_idx
+        """, (session_id,))
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def get_latest_session_for_node(node_id: str) -> Optional[str]:
+    """Get the most recent session ID for a node (for recovery)"""
+    with get_db_connection() as conn:
+        cursor = conn.execute("""
+            SELECT DISTINCT t.session_id 
+            FROM transcript t
+            WHERE t.session_id IN (
+                SELECT session_id FROM transcript 
+                WHERE content LIKE '%' || (SELECT label FROM node WHERE id = ?) || '%'
+            )
+            ORDER BY t.created_at DESC
+            LIMIT 1
+        """, (node_id,))
+        row = cursor.fetchone()
+        return row[0] if row else None
 
 
 # Initialize database on module import
