@@ -86,9 +86,9 @@ def create_knowledge_graph(
         # Determine font color based on mastery (for contrast)
         fontcolor = 'black' if mastery < 0.5 else 'black'
         
-        # Add study time if available
-        if 'study_time_minutes' in node:
-            label += f"\\n({node['study_time_minutes']} min)"
+        # # Add study time if available
+        # if 'study_time_minutes' in node:
+        #     label += f"\\n({node['study_time_minutes']} min)"
         
         # Add mastery percentage
         mastery_pct = int(mastery * 100)

@@ -318,6 +318,30 @@ def get_latest_session_for_node(node_id: str) -> Optional[str]:
         return row[0] if row else None
 
 
+def get_all_projects() -> List[Dict]:
+    """Get all projects ordered by creation date"""
+    with get_db_connection() as conn:
+        cursor = conn.execute("""
+            SELECT id, topic, created_at,
+                   (SELECT COUNT(*) FROM node WHERE project_id = p.id AND mastery >= ?) as mastered_nodes,
+                   (SELECT COUNT(*) FROM node WHERE project_id = p.id) as total_nodes
+            FROM project p
+            ORDER BY created_at DESC
+        """, (MASTERY_THRESHOLD,))
+        
+        projects = []
+        for row in cursor.fetchall():
+            project = dict(row)
+            # Calculate progress percentage
+            if project['total_nodes'] > 0:
+                project['progress'] = int((project['mastered_nodes'] / project['total_nodes']) * 100)
+            else:
+                project['progress'] = 0
+            projects.append(project)
+        
+        return projects
+
+
 # Initialize database on module import
 if __name__ != "__main__":
     init_database() 

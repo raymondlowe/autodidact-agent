@@ -9,6 +9,7 @@ import json
 import time
 from pathlib import Path
 from typing import Optional, List
+from datetime import datetime
 
 # Import our modules
 from backend.db import (
@@ -21,7 +22,8 @@ from backend.db import (
     get_node_with_objectives,
     save_transcript,
     get_latest_session_for_node,
-    get_transcript_for_session
+    get_transcript_for_session,
+    get_all_projects
 )
 from backend.jobs import (
     clarify_topic,
@@ -740,8 +742,8 @@ def main():
         if st.session_state.api_key:
             st.success("✅ API Key configured")
             
-            if st.button("⚙️ Settings"):
-                if st.button("Clear API Key"):
+            with st.expander("⚙️ Settings"):
+                if st.button("Clear API Key", type="secondary", use_container_width=True):
                     CONFIG_FILE.unlink(missing_ok=True)
                     st.session_state.api_key = None
                     st.rerun()
@@ -750,21 +752,72 @@ def main():
         
         st.markdown("---")
         
-        # Project selection (if any exist)
-        if st.session_state.project_id:
-            project = get_project(st.session_state.project_id)
-            if project:
-                st.markdown(f"**Current Project:**")
-                st.markdown(f"📚 {project['topic']}")
+        # New Project button (always visible)
+        if st.button("➕ New Project", type="primary", use_container_width=True):
+            st.session_state.project_id = None
+            st.session_state.current_node = None
+            st.session_state.in_session = False
+            st.session_state.clarification_state = None
+            st.session_state.messages = []
+            st.session_state.tutor_session_id = None
+            st.rerun()
+        
+        st.markdown("---")
+        
+        # List all projects
+        st.markdown("### 📚 Your Projects")
+        
+        all_projects = get_all_projects()
+        
+        if all_projects:
+            # Show current project first if it exists
+            if st.session_state.project_id:
+                current_project = get_project(st.session_state.project_id)
+                if current_project:
+                    st.markdown("**Current:**")
+                    st.info(f"📖 {current_project['topic']}")
+                    st.markdown("---")
+            
+            # Show other projects
+            st.markdown("**All Projects:**")
+            for project in all_projects:
+                # Skip current project if already shown
+                if project['id'] == st.session_state.project_id:
+                    continue
                 
-                if st.button("🏠 New Project"):
-                    st.session_state.project_id = None
-                    st.session_state.current_node = None
-                    st.session_state.in_session = False
-                    st.session_state.clarification_state = None
-                    st.session_state.messages = []
-                    st.session_state.tutor_session_id = None
-                    st.rerun()
+                # Format creation date
+                created = datetime.strptime(project['created_at'], "%Y-%m-%d %H:%M:%S")
+                days_ago = (datetime.now() - created).days
+                if days_ago == 0:
+                    time_str = "Today"
+                elif days_ago == 1:
+                    time_str = "Yesterday"
+                else:
+                    time_str = f"{days_ago} days ago"
+                
+                # Create project button with info
+                with st.container():
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        if st.button(
+                            f"📚 {project['topic'][:28]}{'...' if len(project['topic']) > 28 else ''}",
+                            key=f"proj_{project['id']}",
+                            use_container_width=True
+                        ):
+                            st.session_state.project_id = project['id']
+                            st.session_state.current_node = None
+                            st.session_state.in_session = False
+                            st.session_state.messages = []
+                            st.session_state.tutor_session_id = None
+                            st.rerun()
+                    
+                    with col2:
+                        st.markdown(f"**{project['progress']}%**")
+                    
+                    # Show additional info below button
+                    st.caption(f"📅 {time_str} • {project['total_nodes']} topics • {project['mastered_nodes']} mastered")
+        else:
+            st.info("No projects yet. Click 'New Project' to start!")
     
     # Main content area
     if not st.session_state.api_key:
