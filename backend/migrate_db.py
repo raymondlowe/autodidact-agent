@@ -312,6 +312,44 @@ def migrate_add_project_id_to_learning_objective():
     finally:
         conn.close()
 
+def migrate_remove_graph_json_column():
+    """Remove graph_json column from project table (if it exists)"""
+    
+    if not DB_PATH.exists():
+        print("Database does not exist. Run the app first to create it.")
+        return
+    
+    conn = sqlite3.connect(str(DB_PATH))
+    cursor = conn.cursor()
+    
+    try:
+        # Check if column exists
+        cursor.execute("PRAGMA table_info(project)")
+        columns = [column[1] for column in cursor.fetchall()]
+        
+        if 'graph_json' in columns:
+            print("Note: graph_json column exists but cannot be dropped in SQLite without recreating the table.")
+            print("The column will be ignored by the application. New databases won't have this column.")
+            # SQLite doesn't support DROP COLUMN easily
+            # To truly remove it, we'd need to:
+            # 1. Create a new table without graph_json
+            # 2. Copy all data except graph_json
+            # 3. Drop old table
+            # 4. Rename new table
+            # This is risky for production data, so we'll just note it exists
+        else:
+            print("graph_json column doesn't exist - no migration needed")
+        
+        conn.commit()
+        print("Graph JSON removal check completed!")
+        
+    except Exception as e:
+        print(f"Migration failed: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
+
+
 if __name__ == "__main__":
     migrate_add_job_fields()
     migrate_add_name_field()
@@ -320,3 +358,4 @@ if __name__ == "__main__":
     migrate_add_references_sections_json()
     migrate_add_idx_in_node()
     migrate_add_project_id_to_learning_objective()
+    migrate_remove_graph_json_column()

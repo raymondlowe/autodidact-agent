@@ -12,11 +12,14 @@ from datetime import datetime
 class Project:
     """Represents a learning project"""
     id: str
+    name: str
     topic: str
     report_path: str
-    graph_json: Dict
     resources_json: Dict
     created_at: datetime
+    job_id: str
+    status: str
+    hours: int
 
 
 @dataclass

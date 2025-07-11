@@ -26,7 +26,6 @@ def calculate_color_gradient(mastery: float) -> str:
 def create_knowledge_graph(
     nodes: List[Dict], 
     edges: List[Dict], 
-    node_mastery: Dict[str, float]
 ) -> graphviz.Digraph:
     """
     Create a Graphviz diagram for the knowledge graph
@@ -34,7 +33,6 @@ def create_knowledge_graph(
     Args:
         nodes: List of node dictionaries with 'id', 'label', etc.
         edges: List of edge dictionaries with 'source', 'target', etc.
-        node_mastery: Dictionary mapping node IDs to mastery scores (0-1)
     
     Returns:
         Graphviz Digraph object
@@ -76,11 +74,10 @@ def create_knowledge_graph(
     
     # Add nodes
     for node in nodes:
-        node_id = node['id']
+        print(f"[graph_viz.py] Node: {node}")
+        original_id = node['original_id']
         label = node['label']
-        
-        # Get mastery score and calculate color
-        mastery = node_mastery.get(node_id, 0.0)
+        mastery = node['mastery']
         fillcolor = calculate_color_gradient(mastery)
         
         # Determine font color based on mastery (for contrast)
@@ -97,7 +94,7 @@ def create_knowledge_graph(
         
         # Create node with styling
         dot.node(
-            node_id,
+            original_id,
             label,
             fillcolor=fillcolor,
             fontcolor=fontcolor,

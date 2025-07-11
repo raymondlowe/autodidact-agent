@@ -19,7 +19,7 @@ from backend.db import (
     update_project_with_job  # Add this import
 )
 from backend.jobs import start_deep_research_job, test_job
-from components.graph_viz import create_knowledge_graph, format_report_with_footnotes
+from components.graph_viz import create_knowledge_graph
 from utils.config import save_project_files
 
 # Get project ID from URL or session state
@@ -40,6 +40,7 @@ if not project_id:
 
 # Get project
 project = get_project(project_id)
+print(f"[project_detail.py] Project: {project}")
 
 if not project:
     st.error("Project not found!")
@@ -196,16 +197,13 @@ elif project['status'] == 'completed':
         st.markdown("---")
         
         # Collapsible report viewer
-        with st.expander("📄 Research Report", expanded=False):
+        with st.expander("📄 References", expanded=False):
             try:
                 # Load report and resources
                 report_path = Path(project['report_path'])
                 if report_path.exists():
                     report_md = report_path.read_text(encoding='utf-8')
-                    resources = json.loads(project['resources_json'] or '{}')
-                    
-                    # Format with footnotes (resources as footnote references)
-                    formatted_report = format_report_with_footnotes(report_md, resources)
+                    formatted_report = report_md
                     
                     # Add custom CSS for better report styling
                     st.markdown("""
@@ -248,24 +246,12 @@ elif project['status'] == 'completed':
         
         try:
             # Load graph data
-            graph_data = json.loads(project['graph_json'] or '{}')
-            
+            graph_data = project['graph']
             if graph_data and 'nodes' in graph_data:
-                # Get node mastery data from database
-                with get_db_connection() as conn:
-                    cursor = conn.execute("""
-                        SELECT original_id, mastery 
-                        FROM node 
-                        WHERE project_id = ?
-                    """, (project_id,))
-                    
-                    node_mastery = {row[0]: row[1] for row in cursor.fetchall()}
-                
                 # Create graph
                 graph_viz = create_knowledge_graph(
                     graph_data['nodes'],
-                    graph_data['edges'],
-                    node_mastery
+                    graph_data['edges']
                 )
                 
                 # Display graph
@@ -273,7 +259,7 @@ elif project['status'] == 'completed':
                 
                 # Add graph stats
                 total_nodes = len(graph_data['nodes'])
-                mastered_nodes = sum(1 for m in node_mastery.values() if m >= 0.7)
+                mastered_nodes = sum(1 for m in graph_data['nodes'] if m['mastery'] >= 0.7)
                 progress_pct = int((mastered_nodes / total_nodes) * 100) if total_nodes > 0 else 0
                 
                 st.markdown(f"""

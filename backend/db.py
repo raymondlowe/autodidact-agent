@@ -43,7 +43,6 @@ def init_database():
         name TEXT,
         topic TEXT NOT NULL,
         report_path TEXT,
-        graph_json TEXT,
         resources_json TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         job_id TEXT,
@@ -122,7 +121,7 @@ def init_database():
         conn.commit()
 
 
-def create_project(topic: str, report_path: str, graph_json: Dict, resources: Dict) -> str:
+def create_project(topic: str, report_path: str, resources: Dict) -> str:
     """Create a new project and return its ID"""
     project_id = str(uuid.uuid4())
     
@@ -130,13 +129,12 @@ def create_project(topic: str, report_path: str, graph_json: Dict, resources: Di
         try:
             conn.execute("BEGIN TRANSACTION")
             conn.execute("""
-                INSERT INTO project (id, topic, report_path, graph_json, resources_json)
+                INSERT INTO project (id, topic, report_path, resources_json)
                 VALUES (?, ?, ?, ?, ?)
             """, (
                 project_id,
                 topic,
                 report_path,
-                json.dumps(graph_json),
                 json.dumps(resources)
             ))
             conn.commit()
@@ -189,7 +187,7 @@ def update_project_status(project_id: str, status: str):
         conn.commit()
 
 
-def update_project_completed(project_id: str, report_path: str, graph_json: Dict, 
+def update_project_completed(project_id: str, report_path: str, 
                            resources: List[Dict], status: str = 'completed'):
     """Update a project when its deep research job completes"""
     with get_db_connection() as conn:
@@ -198,13 +196,11 @@ def update_project_completed(project_id: str, report_path: str, graph_json: Dict
             conn.execute("""
                 UPDATE project 
                 SET report_path = ?, 
-                    graph_json = ?,
                     resources_json = ?,
                     status = ?
                 WHERE id = ?
             """, (
                 report_path,
-                json.dumps(graph_json),
                 json.dumps(resources),
                 status,
                 project_id
@@ -316,7 +312,6 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
             update_project_completed(
                 project_id,
                 report_path=report_path,
-                graph_json=graph,
                 resources=resources,
                 status='completed'
             )
@@ -507,28 +502,71 @@ def save_transcript(session_id: str, turn_idx: int, role: str, content: str):
         """, (session_id, turn_idx, role, content))
         conn.commit()
 
+def get_edges_for_project(conn, project_id: str) -> List[Dict[str, Any]]:
+    """Get all edges for a project"""
+    cursor = conn.execute("SELECT * FROM edge WHERE project_id = ?", (project_id,))
+    return [dict(row) for row in cursor.fetchall()]
+
+def get_nodes_for_project(conn, project_id: str) -> List[Dict[str, Any]]:
+    """Get all nodes for a project"""
+    cursor = conn.execute("SELECT * FROM node WHERE project_id = ?", (project_id,))
+    nodes = [dict(row) for row in cursor.fetchall()]
+
+    cursor2 = conn.execute("SELECT * FROM learning_objective WHERE project_id = ?", (project_id,))
+    raw_learning_objectives = [dict(row) for row in cursor2.fetchall()]
+
+    # for every node, add the learning objectives to the node
+    for node in nodes:
+        # sort below by `idx_in_node`
+        node['learning_objectives'] = sorted(
+            [lo for lo in raw_learning_objectives if lo['node_id'] == node['id']],
+            key=lambda x: x['idx_in_node']
+        )
+
+    # for every node, unfurl the `references_sections_json` into a list of sections
+    for node in nodes:
+        node['sections'] = json.loads(node['references_sections_json'])
+    return nodes
+
 
 def get_project(project_id: str) -> Optional[Dict]:
     """Get project details by ID"""
     with get_db_connection() as conn:
         cursor = conn.execute(
-            "SELECT id, name, topic, report_path, graph_json, resources_json, created_at, job_id, status, hours FROM project WHERE id = ?", 
+            "SELECT id, name, topic, report_path, resources_json, created_at, job_id, status, hours FROM project WHERE id = ?", 
             (project_id,)
         )
         row = cursor.fetchone()
         if row:
-            return {
-                "id": row[0],
+            project_id = row[0]
+            project_data = {
+                "id": project_id,
                 "name": row[1],
                 "topic": row[2],
                 "report_path": row[3],
-                "graph_json": row[4],
-                "resources_json": row[5],
-                "created_at": row[6],
-                "job_id": row[7],
-                "status": row[8] or 'completed',  # Default for old projects
-                "hours": row[9] or 5  # Default to 5 hours for old projects
+                "resources_json": row[4],
+                "created_at": row[5],
+                "job_id": row[6],
+                "status": row[7] or 'completed',  # Default for old projects
+                "hours": row[8] or 5  # Default to 5 hours for old projects
             }
+            # first get all the edges which have `project_id` = project_id
+            edges = get_edges_for_project(conn, project_id)
+            nodes = get_nodes_for_project(conn, project_id)
+
+            graph = {
+                "nodes": nodes,
+                "edges": edges
+            }
+
+            project_data['graph'] = graph
+
+            resources_json_str = project_data['resources_json']
+            project_data['resources'] = json.loads(resources_json_str) if resources_json_str else []
+            project_data['resources_json'] = None
+
+            print(f"[get_project] Project {project_id} graph: {graph}")
+            return project_data
     return None
 
 
