@@ -4,6 +4,7 @@ Creates Graphviz diagrams for the knowledge graph
 """
 
 import graphviz
+import re
 from typing import Dict, List
 
 
@@ -91,14 +92,25 @@ def create_knowledge_graph(
         mastery_pct = int(mastery * 100)
         if mastery_pct > 0:
             label += f"\\n{mastery_pct}% mastered"
-        
+
+        tooltip_val = ""
+        if node.get('learning_objectives'):
+            tooltip_val += f"Learning Objectives:"
+            for idx, lo in enumerate(node['learning_objectives']):
+                # replace all [markdown links](http://...) with empty string
+                # Remove markdown links - keep the text, remove the URL
+                desc = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', lo['description']).replace("\n", " ")
+                mastery = lo['mastery']
+                mastery_pct = int(mastery * 100)
+                tooltip_val += f"\n{idx + 1}. {desc} ({mastery_pct}% mastered)"
+
         # Create node with styling
         dot.node(
             original_id,
             label,
             fillcolor=fillcolor,
             fontcolor=fontcolor,
-            tooltip=node.get('summary', '')
+            tooltip=tooltip_val
         )
     
     # Add edges
