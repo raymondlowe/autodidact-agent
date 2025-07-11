@@ -173,8 +173,101 @@ def migrate_rename_footnotes_to_resources():
         conn.close()
 
 
+def migrate_add_references_sections_json():
+    """Add references_sections_json column to node table"""
+    
+    if not DB_PATH.exists():
+        print("Database does not exist. Run the app first to create it.")
+        return
+    
+    conn = sqlite3.connect(str(DB_PATH))
+    cursor = conn.cursor()
+    
+    try:
+        # Check if column already exists
+        cursor.execute("PRAGMA table_info(node)")
+        columns = [column[1] for column in cursor.fetchall()]
+        
+        # Add references_sections_json if it doesn't exist
+        if 'references_sections_json' not in columns:
+            cursor.execute("ALTER TABLE node ADD COLUMN references_sections_json TEXT DEFAULT '[]'")
+            print("Added references_sections_json column to node table")
+            
+            # Update existing nodes to have empty array
+            cursor.execute("UPDATE node SET references_sections_json = '[]' WHERE references_sections_json IS NULL")
+            print("Updated existing nodes to have empty sections array")
+        else:
+            print("references_sections_json column already exists")
+        
+        conn.commit()
+        print("References sections migration completed successfully!")
+        
+    except Exception as e:
+        print(f"Migration failed: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
+
+
+def migrate_add_idx_in_node():
+    """Add idx_in_node column to learning_objective table"""
+    
+    if not DB_PATH.exists():
+        print("Database does not exist. Run the app first to create it.")
+        return
+    
+    conn = sqlite3.connect(str(DB_PATH))
+    cursor = conn.cursor()
+    
+    try:
+        # Check if column already exists
+        cursor.execute("PRAGMA table_info(learning_objective)")
+        columns = [column[1] for column in cursor.fetchall()]
+        
+        # Add idx_in_node if it doesn't exist
+        if 'idx_in_node' not in columns:
+            cursor.execute("ALTER TABLE learning_objective ADD COLUMN idx_in_node INTEGER DEFAULT 0")
+            print("Added idx_in_node column to learning_objective table")
+            
+            # Update existing learning objectives with sequential indices
+            cursor.execute("""
+                SELECT DISTINCT node_id FROM learning_objective ORDER BY node_id
+            """)
+            node_ids = [row[0] for row in cursor.fetchall()]
+            
+            for node_id in node_ids:
+                cursor.execute("""
+                    SELECT id FROM learning_objective 
+                    WHERE node_id = ? 
+                    ORDER BY id
+                """, (node_id,))
+                lo_ids = [row[0] for row in cursor.fetchall()]
+                
+                for idx, lo_id in enumerate(lo_ids):
+                    cursor.execute("""
+                        UPDATE learning_objective 
+                        SET idx_in_node = ? 
+                        WHERE id = ?
+                    """, (idx, lo_id))
+            
+            print(f"Updated {len(node_ids)} nodes with sequential indices")
+        else:
+            print("idx_in_node column already exists")
+        
+        conn.commit()
+        print("Learning objective index migration completed successfully!")
+        
+    except Exception as e:
+        print(f"Migration failed: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
+
+
 if __name__ == "__main__":
     migrate_add_job_fields()
     migrate_add_name_field()
     migrate_add_hours_field()
-    migrate_rename_footnotes_to_resources() 
+    migrate_rename_footnotes_to_resources()
+    migrate_add_references_sections_json()
+    migrate_add_idx_in_node() 

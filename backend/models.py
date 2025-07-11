@@ -28,6 +28,7 @@ class Node:
     label: str
     summary: str
     mastery: float = 0.0
+    references_sections_json: str = "[]"
     learning_objectives: List['LearningObjective'] = None
     
     def __post_init__(self):
@@ -50,6 +51,7 @@ class LearningObjective:
     """Represents a learning objective for a node"""
     id: str
     node_id: str
+    idx_in_node: int
     description: str
     mastery: float = 0.0
 

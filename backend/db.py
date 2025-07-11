@@ -58,6 +58,7 @@ def init_database():
         label TEXT NOT NULL,
         summary TEXT,
         mastery REAL DEFAULT 0.0,
+        references_sections_json TEXT,
         FOREIGN KEY (project_id) REFERENCES project(id)
     );
 
@@ -74,6 +75,7 @@ def init_database():
     CREATE TABLE IF NOT EXISTS learning_objective (
         id TEXT PRIMARY KEY,
         node_id TEXT NOT NULL,
+        idx_in_node INTEGER NOT NULL,
         description TEXT NOT NULL,
         mastery REAL DEFAULT 0.0,
         FOREIGN KEY (node_id) REFERENCES node(id)
@@ -374,16 +376,16 @@ def save_graph_to_db(project_id: str, graph_data: Dict[str, Any]):
         for node in graph_data['nodes']:
             node_id = str(uuid.uuid4())
             conn.execute("""
-                INSERT INTO node (id, project_id, original_id, label, summary)
-                VALUES (?, ?, ?, ?, ?)
-            """, (node_id, project_id, node['id'], node['label'], node['summary']))
-            
+                INSERT INTO node (id, project_id, original_id, label, summary, references_sections_json)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, (node_id, project_id, node['id'], node['title'], node.get('summary', ''), json.dumps(node.get('sections', []))))
+
             # Save learning objectives
-            for obj in node.get('learning_objectives', []):
+            for idx, desc in enumerate(node.get('objectives', [])):
                 conn.execute("""
-                    INSERT INTO learning_objective (id, node_id, description)
-                    VALUES (?, ?, ?)
-                """, (str(uuid.uuid4()), node_id, obj['description']))
+                    INSERT INTO learning_objective (id, node_id, idx_in_node, description)
+                    VALUES (?, ?, ?, ?)
+                """, (str(uuid.uuid4()), node_id, idx, desc))
         
         # Then create edges
         for edge in graph_data['edges']:
@@ -391,7 +393,7 @@ def save_graph_to_db(project_id: str, graph_data: Dict[str, Any]):
                 INSERT INTO edge (source, target, project_id, confidence, rationale)
                 VALUES (?, ?, ?, ?, ?)
             """, (edge['source'], edge['target'], project_id, 
-                 edge.get('confidence'), edge.get('rationale')))
+                 edge.get('confidence', 1.0), edge.get('rationale', '')))
         
         conn.commit()
 
@@ -543,7 +545,7 @@ def get_node_with_objectives(node_id: str) -> Optional[Dict]:
         
         # Get learning objectives
         cursor = conn.execute(
-            "SELECT id, description, mastery FROM learning_objective WHERE node_id = ?",
+            "SELECT id, description, mastery, idx_in_node FROM learning_objective WHERE node_id = ? ORDER BY idx_in_node",
             (node_id,)
         )
         node_dict['learning_objectives'] = [dict(row) for row in cursor.fetchall()]
