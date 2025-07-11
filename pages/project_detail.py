@@ -198,14 +198,14 @@ elif project['status'] == 'completed':
         # Collapsible report viewer
         with st.expander("📄 Research Report", expanded=False):
             try:
-                # Load report and footnotes
+                # Load report and resources
                 report_path = Path(project['report_path'])
                 if report_path.exists():
                     report_md = report_path.read_text(encoding='utf-8')
-                    footnotes = json.loads(project['footnotes_json'] or '{}')
+                    resources = json.loads(project['resources_json'] or '{}')
                     
-                    # Format with footnotes
-                    formatted_report = format_report_with_footnotes(report_md, footnotes)
+                    # Format with footnotes (resources as footnote references)
+                    formatted_report = format_report_with_footnotes(report_md, resources)
                     
                     # Add custom CSS for better report styling
                     st.markdown("""

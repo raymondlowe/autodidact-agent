@@ -44,7 +44,7 @@ def init_database():
         topic TEXT NOT NULL,
         report_path TEXT,
         graph_json TEXT,
-        footnotes_json TEXT,
+        resources_json TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         job_id TEXT,
         status TEXT DEFAULT 'completed',
@@ -117,7 +117,7 @@ def init_database():
         conn.commit()
 
 
-def create_project(topic: str, report_path: str, graph_json: Dict, footnotes: Dict) -> str:
+def create_project(topic: str, report_path: str, graph_json: Dict, resources: Dict) -> str:
     """Create a new project and return its ID"""
     project_id = str(uuid.uuid4())
     
@@ -125,14 +125,14 @@ def create_project(topic: str, report_path: str, graph_json: Dict, footnotes: Di
         try:
             conn.execute("BEGIN TRANSACTION")
             conn.execute("""
-                INSERT INTO project (id, topic, report_path, graph_json, footnotes_json)
+                INSERT INTO project (id, topic, report_path, graph_json, resources_json)
                 VALUES (?, ?, ?, ?, ?)
             """, (
                 project_id,
                 topic,
                 report_path,
                 json.dumps(graph_json),
-                json.dumps(footnotes)
+                json.dumps(resources)
             ))
             conn.commit()
             return project_id
@@ -194,7 +194,7 @@ def update_project_completed(project_id: str, report_path: str, graph_json: Dict
                 UPDATE project 
                 SET report_path = ?, 
                     graph_json = ?,
-                    footnotes_json = ?,
+                    resources_json = ?,
                     status = ?
                 WHERE id = ?
             """, (
@@ -347,8 +347,7 @@ def check_job(job_id: str) -> bool:
     Check job status and returns result.
     """
     from openai import OpenAI
-    from utils.config import load_api_key, save_project_files
-    from utils.deep_research import extract_graph_and_footnotes
+    from utils.config import load_api_key
 
     print(f"[check_job] Checking job {job_id}")
     
@@ -508,7 +507,7 @@ def get_project(project_id: str) -> Optional[Dict]:
     """Get project details by ID"""
     with get_db_connection() as conn:
         cursor = conn.execute(
-            "SELECT id, name, topic, report_path, graph_json, footnotes_json, created_at, job_id, status, hours FROM project WHERE id = ?", 
+            "SELECT id, name, topic, report_path, graph_json, resources_json, created_at, job_id, status, hours FROM project WHERE id = ?", 
             (project_id,)
         )
         row = cursor.fetchone()
@@ -519,7 +518,7 @@ def get_project(project_id: str) -> Optional[Dict]:
                 "topic": row[2],
                 "report_path": row[3],
                 "graph_json": row[4],
-                "footnotes_json": row[5],
+                "resources_json": row[5],
                 "created_at": row[6],
                 "job_id": row[7],
                 "status": row[8] or 'completed',  # Default for old projects

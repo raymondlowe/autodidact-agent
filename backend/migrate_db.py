@@ -128,7 +128,53 @@ def migrate_add_hours_field():
         conn.close()
 
 
+def migrate_rename_footnotes_to_resources():
+    """Rename footnotes_json column to resources_json in project table"""
+    
+    if not DB_PATH.exists():
+        print("Database does not exist. Run the app first to create it.")
+        return
+    
+    conn = sqlite3.connect(str(DB_PATH))
+    cursor = conn.cursor()
+    
+    try:
+        # Check if old column exists and new column doesn't exist
+        cursor.execute("PRAGMA table_info(project)")
+        columns = [column[1] for column in cursor.fetchall()]
+        
+        if 'footnotes_json' in columns and 'resources_json' not in columns:
+            # SQLite doesn't support direct column rename, so we need to:
+            # 1. Create new column
+            # 2. Copy data
+            # 3. Drop old column (which requires recreating the table)
+            
+            # Since SQLite doesn't support DROP COLUMN easily, we'll use a different approach:
+            # Create the new column and copy data
+            cursor.execute("ALTER TABLE project ADD COLUMN resources_json TEXT")
+            cursor.execute("UPDATE project SET resources_json = footnotes_json")
+            print("Renamed footnotes_json to resources_json in project table")
+            
+            # Note: The old column will remain but be unused. A full table recreation
+            # would be needed to remove it, which is complex and risky for existing data.
+            print("Note: The old footnotes_json column remains for backward compatibility")
+        elif 'resources_json' in columns:
+            print("resources_json column already exists")
+        else:
+            print("footnotes_json column not found - no migration needed")
+        
+        conn.commit()
+        print("Footnotes to resources migration completed successfully!")
+        
+    except Exception as e:
+        print(f"Migration failed: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
+
+
 if __name__ == "__main__":
     migrate_add_job_fields()
     migrate_add_name_field()
-    migrate_add_hours_field() 
+    migrate_add_hours_field()
+    migrate_rename_footnotes_to_resources() 

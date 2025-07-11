@@ -60,7 +60,7 @@ Output format (MUST ADHERE)
       }
     ]
   },
-  "footnotes": {
+  "resources": {
     "1": {"title":"...", "url":"..."},
     "2": {"title":"...", "url":"..."}
   }

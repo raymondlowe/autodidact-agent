@@ -259,7 +259,7 @@ def process_clarification_responses(questions: List[str], responses: List[str]) 
 #     Adapted from 02-topic-then-deep-research.py
     
 #     Returns:
-#         Dict with report_markdown, graph, and footnotes
+#         Dict with report_markdown, graph, and resources
 #     """
 #     print(f"\n[run_deep_research_job] Starting deep research")
 #     print(f"[run_deep_research_job] Topic: '{topic}'")
@@ -307,8 +307,8 @@ def process_clarification_responses(questions: List[str], responses: List[str]) 
 #         if "edges" not in result["graph"]:
 #             result["graph"]["edges"] = []
         
-#         if "footnotes" not in result:
-#             result["footnotes"] = {}  # Default to empty if missing
+#         if "resources" not in result:
+#             result["resources"] = {}  # Default to empty if missing
         
 #         print(f"[run_deep_research_job] Found {len(result['graph']['nodes'])} nodes and {len(result['graph']['edges'])} edges")
         

@@ -15,7 +15,7 @@ class Project:
     topic: str
     report_path: str
     graph_json: Dict
-    footnotes_json: Dict
+    resources_json: Dict
     created_at: datetime
 
 
