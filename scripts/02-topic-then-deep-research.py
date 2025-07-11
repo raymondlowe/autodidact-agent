@@ -228,7 +228,6 @@ def cli():
 
   try:
       result = run_deep_research(args.topic, args.pdf)
-      # FIXME: add this back in later?
       # validate_graph(result)
   except Exception as e:
       print(f"❌ Validation or API error: {e}", file=sys.stderr)
@@ -239,8 +238,6 @@ def cli():
   json_path = args.outdir / f"outputs/{topic_slug}-graph.json"
 
   md_path.write_text(result["report_markdown"], encoding="utf-8")
-  # FIXME: need to get the footnotes from the result too result["footnotes"]
-  # Example data: "footnotes": {"1": {"title": "Statistical learning theory - Wikipedia", "url": "https://en.wikipedia.org/wiki/Statistical_learning_theory"}, "2": {"title": "Chapter 2: Statistical Learning (Brillantes)", "url": "https://dsbrillantes.github.io/ISL-R-Notebooks/Chapter-Notebooks/Chapter-2-Statistical-Learning.nb.html"}, "3": {"title": "Predictions and Decision Theory (Lecture Notes)", "url": "https://www.stat.cmu.edu/~cshalizi/sml/21/lectures/02/lecture-02.html"}, "4": {"title": "Conceptual Foundations of Statistical Learning (Course Outline)", "url": "https://www.stat.cmu.edu/~cshalizi/sml/21/"}, "5": {"title": "Decision tree learning - Wikipedia", "url": "https://en.wikipedia.org/wiki/Decision_tree_learning"}, "7": {"title": "Artificial neural networks - Wikipedia", "url": "https://en.wikipedia.org/wiki/Artificial_neural_network"}, "8": {"title": "Naive Bayes classifier - Wikipedia", "url": "https://en.wikipedia.org/wiki/Naive_Bayes_classifier"}, "9": {"title": "k-Nearest Neighbors algorithm - Wikipedia", "url": "https://en.wikipedia.org/wiki/K-nearest_neighbors_algorithm"}, "10": {"title": "Support-vector machine - Wikipedia", "url": "https://en.wikipedia.org/wiki/Support_vector_machine"}}}
   json_path.write_text(json.dumps(result["graph"], indent=2), encoding="utf-8")
 
   print(f"✅ Saved Markdown report → {md_path}")

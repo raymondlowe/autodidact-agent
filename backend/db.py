@@ -185,7 +185,7 @@ def update_project_status(project_id: str, status: str):
 
 
 def update_project_completed(project_id: str, report_path: str, graph_json: Dict, 
-                           footnotes: Dict, status: str = 'completed'):
+                           resources: List[Dict], status: str = 'completed'):
     """Update a project when its deep research job completes"""
     with get_db_connection() as conn:
         try:
@@ -193,14 +193,14 @@ def update_project_completed(project_id: str, report_path: str, graph_json: Dict
             conn.execute("""
                 UPDATE project 
                 SET report_path = ?, 
-                    graph_json = ?, 
+                    graph_json = ?,
                     footnotes_json = ?,
                     status = ?
                 WHERE id = ?
             """, (
                 report_path,
                 json.dumps(graph_json),
-                json.dumps(footnotes),
+                json.dumps(resources),
                 status,
                 project_id
             ))
@@ -217,7 +217,7 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
     """
     from openai import OpenAI
     from utils.config import load_api_key, save_project_files
-    from utils.deep_research import extract_graph_and_footnotes
+    from utils.deep_research import deep_research_output_cleanup
 
     print(f"[check_and_complete_job] Checking job {job_id} for project {project_id}")
     
@@ -233,27 +233,29 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
         
         if job.status == "completed":
             print(f"[check_and_complete_job] Job {job_id} completed successfully")
+
+            json_str = job.output_text
             
-            # Extract the result
-            content_block = job.output[-1].content[0]
-            if content_block.type != "output_text":
-                raise RuntimeError("Unexpected content block type")
+            # TODO: remove this after confirming that job.output_text works in all cases
+            # # Extract the result
+            # content_block = job.output[-1].content[0]
+            # if content_block.type != "output_text":
+            #     raise RuntimeError("Unexpected content block type")
+            
+            # fixes small typos, invalid JSON, etc, by passing to 4o or o4-mini to fix
+            json_str = deep_research_output_cleanup(json_str, client)
             
             # Parse the JSON response
             try:
-                data = json.loads(content_block.text)
+                data = json.loads(json_str)
             except json.JSONDecodeError as e:
                 print(f"[check_and_complete_job] Failed to parse JSON: {e}")
                 update_project_status(project_id, 'failed')
                 return True
             
-            # FIXME: handle data properly here
-            # might need to pass to some other system to 
-            # thought o3 but maybe not? takes too long
-            
             # Validate and extract components
             if "resources" in data and "nodes" in data:
-                # New format from DEVELOPER_PROMPT
+                resources = data["resources"]
                 graph = {
                     "nodes": data["nodes"],
                     "edges": []  # Build edges from prerequisites
@@ -275,14 +277,12 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
                 for resource in data["resources"]:
                     report_markdown += f"- [{resource['title']}]({resource['url']}) - {resource['scope']}\n"
                 
-                footnotes = {}  # No footnotes in new format
-                
             else:
-                # Legacy format or missing data
-                report_markdown = data.get("report_markdown", f"# {get_project(project_id)['topic']}")
-                graph = data.get("graph", {"nodes": [], "edges": []})
-                footnotes = data.get("footnotes", {})
-            
+                # missing data. should we just throw an error here?
+                print("Invalid/empty data returned from deep research")
+                update_project_status(project_id, 'failed')
+                return True
+
             # Ensure nodes have learning objectives
             for node in graph["nodes"]:
                 if "learning_objectives" not in node:
@@ -312,11 +312,11 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
                 project_id,
                 report_path=report_path,
                 graph_json=graph,
-                footnotes=footnotes,
+                resources=resources,
                 status='completed'
             )
             
-            # Save graph to database
+            # Save graph nodes and edges to database (we need to store these because this is where progress is tracked)
             save_graph_to_db(project_id, graph)
             
             print(f"[check_and_complete_job] Project {project_id} updated successfully")
@@ -332,7 +332,7 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
             update_project_status(project_id, 'failed')
             return True
             
-        else:
+        else: # in_progress, queued, incomplete
             # Still processing
             print(f"[check_and_complete_job] Job {job_id} still processing (status: {job.status})")
             return False

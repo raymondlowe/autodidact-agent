@@ -18,7 +18,7 @@ from backend.db import (
     get_all_projects,
     update_project_with_job  # Add this import
 )
-from backend.jobs import start_deep_research_job
+from backend.jobs import start_deep_research_job, test_job
 from components.graph_viz import create_knowledge_graph, format_report_with_footnotes
 from utils.config import save_project_files
 
@@ -120,14 +120,11 @@ elif project['status'] == 'failed':
                         reasoning_texts.append(summary.text)
 
             # FIXME: unsure if we should even do anything with this: combined_text
-            combined_text = "An earlier research model failed partway, here are it's reasoning texts on the same prompt, in case those are useful:" + "\n\n".join(reasoning_texts)
+            # combined_text = "An earlier research model failed partway, here are it's reasoning texts on the same prompt, in case those are useful:" + "\n\n".join(reasoning_texts)
 
+            combined_text = ""
             # print(f"[project_detail.py] Combined text: {combined_text}")
 
-            # FIXME: add project['hours'] to schema 
-
-            # KeyError: 'hours'
-            # if project has key hours, do something else do something else
             if 'hours' in project:
                 hours = project['hours']
             else:
@@ -169,10 +166,11 @@ elif project['status'] == 'completed':
                 st.info(f"**Ready to learn:**\n\n📖 {next_nodes[0]['label']}")
                 if st.button("Start Session →", type="primary", use_container_width=True):
                     # Create new session and navigate
-                    session_id = create_session(project_id, next_nodes[0]['id'])
-                    st.session_state.selected_project_id = project_id
-                    st.session_state.selected_session_id = session_id
-                    st.switch_page("pages/session-detail.py")
+                    test_job()
+                    # session_id = create_session(project_id, next_nodes[0]['id'])
+                    # st.session_state.selected_project_id = project_id
+                    # st.session_state.selected_session_id = session_id
+                    # st.switch_page("pages/session-detail.py")
             else:
                 # Multiple options
                 st.info("**Choose your next topic:**")

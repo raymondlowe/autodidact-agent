@@ -426,3 +426,18 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
     except Exception as e:
         print(f"[start_deep_research_job] ERROR: {type(e).__name__}: {str(e)}")
         raise RuntimeError(f"Failed to start Deep Research job: {str(e)}") 
+
+
+def test_job():
+    print("test: run the jobs")
+    api_key = load_api_key()
+    if not api_key:
+        raise ValueError("OpenAI API key not found. Please configure your API key.")
+
+    client = OpenAI(api_key=api_key)
+
+    from utils.deep_research import test_data, deep_research_output_cleanup
+
+    input_data = test_data
+    val = deep_research_output_cleanup(input_data, client)
+    print(f"[test_job] Val: {val}")
