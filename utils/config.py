@@ -20,6 +20,7 @@ PROJECTS_DIR = CONFIG_DIR / "projects"
 
 # Deep Research API settings
 DEEP_RESEARCH_MODEL = "o4-mini-deep-research-2025-06-26"
+# could maybe use 03-deep-research if we're okay with higher costs for this
 DEEP_RESEARCH_POLL_INTERVAL = 10  # seconds
 
 # LLM settings

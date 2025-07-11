@@ -11,6 +11,7 @@ import openai
 from openai import OpenAI
 from utils.config import CHAT_MODEL, load_api_key
 from utils.deep_research import run_deep_research as deep_research_api
+from utils.deep_research import TOPIC_CLARIFYING_PROMPT, TOPIC_REWRITING_PROMPT
 
 
 # Constants for retry logic
@@ -46,35 +47,21 @@ def retry_api_call(func, *args, max_retries=MAX_RETRIES, **kwargs):
     raise RuntimeError(f"Failed after {max_retries} attempts. Last error: {str(last_error)}")
 
 
-def clarify_topic(topic: str, hours: Optional[int] = None) -> Dict:
+def clarify_topic(topic: str, hours: Optional[int] = None) -> List[str]:
     """
-    Determine if topic needs clarification and generate questions if needed.
+    Generate clarifying questions for a given topic using TOPIC_CLARIFYING_PROMPT.
+    Always returns questions to ask the user.
     
-    Returns either:
-    - {"need_clarification": true, "questions": ["Q1", "Q2", ...]}
-    - {"need_clarification": false, "refined_topic": "..."}
+    Args:
+        topic: The learning topic
+        hours: Optional number of hours the user wants to invest
+        
+    Returns:
+        List of clarifying questions
     """
-    
-    clarification_prompt = '''
-    You are an intelligent assistant preparing to conduct a deep research report. 
-    Before proceeding, determine if clarification is needed.
-    
-    If the topic is specific enough (e.g., "Foundations of Statistical Learning", 
-    "Bitcoin consensus mechanisms", "React hooks"), return:
-    {"need_clarification": false, "refined_topic": "<exact topic provided>"}
-    
-    If the topic is too broad or ambiguous (e.g., "Modern World History", "Programming", 
-    "Science"), ask up to 5 clarifying questions in a numbered list to help narrow down:
-    - What aspect/subtopic they're most interested in
-    - Their current knowledge level
-    - Specific goals or applications
-    - Time constraints or depth preferences
-    
-    Return format must be valid JSON:
-    {"need_clarification": true, "questions": ["Q1", "Q2", ...]}
-    or
-    {"need_clarification": false, "refined_topic": "<refined version of topic>"}
-    '''
+    print(f"\n[clarify_topic] Starting clarification for topic: '{topic}'")
+    if hours:
+        print(f"[clarify_topic] User wants to invest {hours} hours")
     
     # Get API key
     api_key = load_api_key()
@@ -87,46 +74,128 @@ def clarify_topic(topic: str, hours: Optional[int] = None) -> Dict:
     # Prepare user message
     user_msg = f"Topic: {topic}"
     if hours:
-        user_msg += f"\nUser wants to spend {hours} hours learning this."
+        user_msg += f"\nTime investment: {hours} hours"
+    
+    print(f"[clarify_topic] Using model: gpt-4o")
+    print(f"[clarify_topic] User message: {user_msg}")
     
     try:
         # Call OpenAI API with retry logic
         def make_clarifier_call():
             return client.chat.completions.create(
-                model=CHAT_MODEL,
+                model="gpt-4o",  # Using gpt-4o as requested
                 messages=[
-                    {"role": "system", "content": clarification_prompt},
+                    {"role": "system", "content": TOPIC_CLARIFYING_PROMPT},
                     {"role": "user", "content": user_msg}
                 ],
-                response_format={"type": "json_object"},
                 temperature=0.7
             )
         
+        print("[clarify_topic] Making API call...")
         response = retry_api_call(make_clarifier_call)
         
-        # Parse response
-        result = json.loads(response.choices[0].message.content)
+        # Extract the response content
+        questions_text = response.choices[0].message.content.strip()
+        print(f"[clarify_topic] Raw response:\n{questions_text}")
         
-        # Validate response format
-        if "need_clarification" not in result:
-            raise ValueError("Invalid response format from clarifier")
+        # Parse the questions from the response
+        # The response should be in bullet format, so we'll extract bullet points
+        questions = []
+        lines = questions_text.split('\n')
+        for line in lines:
+            line = line.strip()
+            # Look for lines that start with bullets or numbers
+            if line and (line.startswith('-') or line.startswith('•') or line.startswith('*') or 
+                        (len(line) > 2 and line[0].isdigit() and line[1] in '.)')):
+                # Clean up the bullet/number prefix
+                question = re.sub(r'^[-•*\d.)\s]+', '', line).strip()
+                if question:
+                    questions.append(question)
         
-        if result["need_clarification"] and "questions" not in result:
-            raise ValueError("Missing questions in clarification response")
+        # If no bullets found, try to split by sentence-ending punctuation
+        if not questions:
+            print("[clarify_topic] No bullet points found, trying to split by sentences")
+            sentences = re.split(r'[?!.]\s+', questions_text)
+            questions = [s.strip() + '?' if not s.strip().endswith('?') else s.strip() 
+                        for s in sentences if s.strip() and len(s.strip()) > 10]
         
-        if not result["need_clarification"] and "refined_topic" not in result:
-            result["refined_topic"] = topic
+        print(f"[clarify_topic] Extracted {len(questions)} questions")
+        for i, q in enumerate(questions, 1):
+            print(f"[clarify_topic]   Q{i}: {q}")
         
-        return result
+        return questions
         
-    except json.JSONDecodeError as e:
-        raise RuntimeError(f"Failed to parse clarifier response: {e}")
     except openai.AuthenticationError:
+        print("[clarify_topic] ERROR: Authentication failed")
         raise RuntimeError("Invalid API key. Please check your OpenAI API key.")
     except openai.PermissionDeniedError:
+        print("[clarify_topic] ERROR: Permission denied")
         raise RuntimeError("API key doesn't have access to the required model.")
     except Exception as e:
+        print(f"[clarify_topic] ERROR: {type(e).__name__}: {str(e)}")
         raise RuntimeError(f"Clarifier API call failed: {str(e)}")
+
+
+def rewrite_topic(initial_topic: str, questions: List[str], user_answers: str) -> str:
+    """
+    Rewrite the topic based on clarifying questions and user answers.
+    
+    Args:
+        initial_topic: The original topic from the user
+        questions: List of clarifying questions that were asked
+        user_answers: User's answers to all questions in a single string
+        
+    Returns:
+        Rewritten, detailed topic instruction
+    """
+    print(f"\n[rewrite_topic] Starting topic rewriting")
+    print(f"[rewrite_topic] Initial topic: '{initial_topic}'")
+    print(f"[rewrite_topic] Number of questions: {len(questions)}")
+    print(f"[rewrite_topic] User answers length: {len(user_answers)} chars")
+    
+    # Get API key and create client
+    api_key = load_api_key()
+    if not api_key:
+        raise ValueError("OpenAI API key not found")
+    
+    client = OpenAI(api_key=api_key)
+    
+    # Format the content for the rewriting prompt
+    formatted_content = f"""Initial topic: {initial_topic}
+
+Clarifying questions:
+"""
+    for i, question in enumerate(questions, 1):
+        formatted_content += f"{i}. {question}\n"
+    
+    formatted_content += f"\nUser's responses:\n{user_answers}"
+    
+    print(f"[rewrite_topic] Formatted content for API:\n{formatted_content}")
+    print(f"[rewrite_topic] Using model: gpt-4o")
+    
+    try:
+        def make_rewriter_call():
+            return client.chat.completions.create(
+                model="gpt-4o",  # Using gpt-4o as requested
+                messages=[
+                    {"role": "system", "content": TOPIC_REWRITING_PROMPT},
+                    {"role": "user", "content": formatted_content}
+                ],
+                temperature=0.7
+            )
+        
+        print("[rewrite_topic] Making API call...")
+        response = retry_api_call(make_rewriter_call)
+        
+        # Extract the rewritten topic
+        rewritten_topic = response.choices[0].message.content.strip()
+        print(f"[rewrite_topic] Rewritten topic:\n{rewritten_topic}")
+        
+        return rewritten_topic
+        
+    except Exception as e:
+        print(f"[rewrite_topic] ERROR: {type(e).__name__}: {str(e)}")
+        raise RuntimeError(f"Failed to rewrite topic: {str(e)}")
 
 
 def is_skip_response(response: str) -> bool:
@@ -193,6 +262,11 @@ def run_deep_research_job(topic: str, hours: Optional[int] = None) -> Dict:
     Returns:
         Dict with report_markdown, graph, and footnotes
     """
+    print(f"\n[run_deep_research_job] Starting deep research")
+    print(f"[run_deep_research_job] Topic: '{topic}'")
+    if hours:
+        print(f"[run_deep_research_job] Hours: {hours}")
+    
     # Get API key and create client
     api_key = load_api_key()
     if not api_key:
@@ -202,7 +276,10 @@ def run_deep_research_job(topic: str, hours: Optional[int] = None) -> Dict:
     
     try:
         # Call the deep research API
+        print("[run_deep_research_job] Calling deep research API...")
         result = deep_research_api(topic, client, hours)
+        
+        print("[run_deep_research_job] Deep research completed, validating results...")
         
         # Validate result has required fields
         if "report_markdown" not in result:
@@ -224,9 +301,12 @@ def run_deep_research_job(topic: str, hours: Optional[int] = None) -> Dict:
         if "footnotes" not in result:
             result["footnotes"] = {}  # Default to empty if missing
         
+        print(f"[run_deep_research_job] Found {len(result['graph']['nodes'])} nodes and {len(result['graph']['edges'])} edges")
+        
         # Validate nodes have learning objectives
-        for node in result["graph"]["nodes"]:
+        for i, node in enumerate(result["graph"]["nodes"]):
             if "learning_objectives" not in node or not node["learning_objectives"]:
+                print(f"[run_deep_research_job] Warning: Node '{node.get('label', 'unknown')}' missing learning objectives, generating defaults")
                 # Generate placeholder objectives if missing
                 node["learning_objectives"] = [
                     f"Understand the key concepts of {node['label']}",
@@ -236,15 +316,21 @@ def run_deep_research_job(topic: str, hours: Optional[int] = None) -> Dict:
                     f"Create solutions using {node['label']} knowledge"
                 ]
         
+        print("[run_deep_research_job] Deep research validation complete")
         return result
         
     except openai.AuthenticationError:
+        print("[run_deep_research_job] ERROR: Authentication failed")
         raise RuntimeError("Invalid API key. Please check your OpenAI API key.")
     except openai.PermissionDeniedError:
+        print("[run_deep_research_job] ERROR: Permission denied")
         raise RuntimeError("API key doesn't have access to Deep Research model.")
     except openai.RateLimitError:
+        print("[run_deep_research_job] ERROR: Rate limit exceeded")
         raise RuntimeError("Rate limit exceeded. Please try again in a few minutes.")
     except openai.APIError as e:
+        print(f"[run_deep_research_job] ERROR: OpenAI API error: {str(e)}")
         raise RuntimeError(f"OpenAI API error: {str(e)}")
     except Exception as e:
+        print(f"[run_deep_research_job] ERROR: {type(e).__name__}: {str(e)}")
         raise RuntimeError(f"Deep Research failed: {str(e)}") 

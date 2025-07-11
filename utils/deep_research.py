@@ -10,81 +10,92 @@ import openai
 from openai import OpenAI
 from utils.config import DEEP_RESEARCH_MODEL, DEEP_RESEARCH_POLL_INTERVAL
 
+# After we get the user's topic & time investment preferences, this prompt is used to ask clarifying questions to the user
+TOPIC_CLARIFYING_PROMPT = """
+You will be given a short topic that a user wants to learn alongside the time they want to invest. Your job is NOT to answer it or complete the task, but instead to ask clarifying questions that would help you or another researcher to understand what exactly the user wants to learn.
+
+GUIDELINES:
+1. **Focus on Learning Scope & Learner Profile**
+- Ask what *specific aspect* of the topic interests them (breadth vs. depth, technical vs. conceptual).  
+- Ask about their **background knowledge** (novice, hobbyist, intermediate, expert).  
+- Ask their **preferred learning outcomes** (e.g., “explain to a peer”, “implement a demo”, “pass an exam”).
+- Consider what information would change the structure, depth, or direction for the specialized learning plan.
+- Ask about each one *explicitly*, even if it feels obvious or typical.
+
+2. **Do Not Invent Preferences**
+- If the user did not mention a preference, *do not assume it*. Ask about it clearly and neutrally.
+
+3. **Use the First Person**
+- Phrase your questions from the perspective of the assistant or researcher talking to the user (e.g., “Could you clarify...” or “Do you have a preference for...”)
+
+4. **Use a Bulleted List if Multiple Questions**
+- If there are multiple open questions, list them clearly in bullet format for readability.
+
+5. **Avoid Overasking**
+- Prioritize the 3–6 questions that would most reduce ambiguity or scope creep. You don’t need to ask *everything*, just the most pivotal unknowns.
+
+6. **Include Examples Where Helpful**
+- If asking about preferences, briefly list examples to help the user answer. For e.g. media formats they prefer could be textbook chapters, videos, blogposts, etc.
+
+7. **Format for Conversational Use**
+- The output should sound helpful and conversational—not like a form. Aim for a natural tone while still being precise.
+"""
+
+# This prompt will be passed the user's topic, clarifying questions, and their responses.
+# It will be used to rewrite the topic into a more specific and detailed topic instruction, which will finally be passed into the deep research prompt.
+TOPIC_REWRITING_PROMPT = """
+You will be given an initial topic by the user, followed by clarifying questions, followed by the user's responses. Your job is to rewrite these into a concise detailed topic instruction.
+
+GUIDELINES:
+1. **Maximize Specificity and Detail**
+- Include all known user preferences and explicitly list key attributes or dimensions to consider.
+- It is of utmost importance that all details from the user are included in the instructions.
+
+2. **Fill in Unstated But Necessary Dimensions as Open-Ended**
+- If certain attributes are essential for a meaningful output but the user has not provided them, explicitly state that they are open-ended or default to no specific constraint.
+
+3. **Avoid Unwarranted Assumptions**
+- If the user has not provided a particular detail, do not invent one.
+- Instead, state the lack of specification and guide the researcher to treat it as flexible or accept all possible options.
+
+4. **Use the First Person**
+- Phrase the request from the perspective of the user.
+"""
+
 
 # Updated developer prompt to include learning objectives
 DEVELOPER_PROMPT = """
-You are a "Deep Research + Graph Builder" agent.
+You are a “Deep-Research Curriculum Architect” with the goal of making the optimal learning syllabus for motivated autodidacts  on the topic user asks of you
 
-Goal
-====
-Given a user-supplied learning topic and time duration they want to invest, your goal is to make the optimal learning syllabus for them. You must:
+TASK 1 – RESOURCES  
+• Identify 10–15 authoritative, learner-friendly resources suitable for motivated autodidacts on the specified topic.
+• Return them as a JSON array **resources** with:  
+  { "rid", "title", "type", "url", "date", "scope" }  
+  – type ∈ {book | paper | video | interactive | article}.  
+  – scope = one-sentence summary.
 
-1. Investigate the topic thoroughly (use web_search_preview, code_interpreter, and
-   any attached files).
-2. Write a concise but comprehensive report in Markdown, with inline citations
-   like "…text [^1]".
-3. Build a prerequisite knowledge graph (DAG) and return it as *valid JSON*.
-
-Output format (MUST ADHERE)
----------------------------
-```json
-{
-  "report_markdown": "<full markdown report here>",
-  "graph": {
-    "nodes": [
-      {
-        "id": "string",                // kebab-case, unique
-        "label": "string",             // human-readable concept
-        "summary": "1–2 sentences",
-        "study_time_minutes": 30,      // always 30 unless truly unavoidable
-        "source_citations": [1,3],     // footnote numbers from the report
-        "learning_objectives": [       // 5-7 specific, measurable objectives
-          "Explain the difference between supervised and unsupervised learning",
-          "Calculate bias and variance for a given model",
-          "Apply k-fold cross-validation to evaluate a classifier",
-          "Implement gradient descent for linear regression",
-          "Identify when regularization is needed and choose between L1/L2"
-        ]
-      }
+TASK 2 – GRAPH  
+• Build a directed-acyclic knowledge graph with **≈ 2 nodes for every hour of study time stated by the user (minimum 8, maximum 40), ±2 nodes allowed**.  
+• Each node must be teachable in ~30 min (split >45 min concepts, merge <15 min).  
+• Node schema:  
+  {
+    "id": "kebab-case",                  // unique  
+    "title": "human-readable",  
+    "prerequisites": ["id1","id2","id3"],// ≤3; omit if none  
+    "objectives": [                      // 5–7, Bloom verbs, ≤12 words
+      "Explain …", "Calculate …"
     ],
-    "edges": [
-      {
-        "source": "id",                // prerequisite
-        "target": "id",                // depends-on
-        "confidence": 0.0-1.0,
-        "rationale": "short reason",
-        "source_citations": [2]
-      }
+    "sections": [                        // pointers into resources
+      { "rid": "mastering_bitcoin_2e", "loc": "Ch.8 §Difficulty" }
     ]
-  },
-  "footnotes": {
-    "1": {"title":"...", "url":"..."},
-    "2": {"title":"...", "url":"..."}
   }
-}
-```
 
-Structural rules
-	1.	The graph is a DAG, not a linear list.
-	2.	Create an edge only if concept A must be learned before B.
-	3.	Aim for 2–4 independent threads (disjoint roots).
-	4.	≥ 10 % of nodes must have no prerequisites (roots) and ≥ 15 % must have
-no dependants (leaves).
-	5.	Average branching factor ≥ 1.3 (some nodes point to ≥ 2 children).
-	6.	Each node should be teachable in ≈ 30 minutes. If a concept exceeds
-45 min, split it; if < 15 min, merge upward.
-	7.	Each node must have 5-7 specific, measurable learning objectives.
-
-Additional rules for learning objectives:
-- Each node must have 5-7 learning objectives
-- Objectives should be specific and measurable (use action verbs: explain, calculate, implement, identify, apply, etc.)
-- Objectives should be achievable within the 30-minute session
-- Objectives should build on prerequisites and prepare for dependents
-
-Constraints
-	•	Target 12–35 nodes total.
-	•	Graph must be acyclic.
-	•	Return only the JSON object in your final message (no markdown fencing).
+HARD CONSTRAINTS  
+• Graph acyclic; ≥10 % roots (no prerequisites) and ≥15 % leaves (no dependants).  
+• Every prerequisite **must exactly match an “id” that appears in this JSON**.  
+• Use only `rid` values present in **resources**.  
+• Return **one valid JSON object** with keys `"resources"` and `"nodes"`.  
+• Any non-JSON text will be discarded.
 """
 
 
@@ -112,9 +123,14 @@ def run_deep_research(topic: str, client: OpenAI, hours: Optional[int] = None, e
     Returns:
         Dict with report_markdown, graph, and footnotes
     """
+    print(f"\n[run_deep_research] Starting deep research")
+    print(f"[run_deep_research] Topic: '{topic}'")
+    print(f"[run_deep_research] Hours: {hours}")
+    print(f"[run_deep_research] Existing job ID: {existing_job_id}")
     
     # If we have an existing job ID, just retrieve results
     if existing_job_id:
+        print("[run_deep_research] Retrieving existing job results...")
         job = client.responses.retrieve(existing_job_id)
         content_block = job.output[-1].content[0]
     else:
@@ -122,7 +138,11 @@ def run_deep_research(topic: str, client: OpenAI, hours: Optional[int] = None, e
         user_message = f"Topic: {topic}"
         if hours:
             user_message += f"\nTarget study time: {hours} hours"
+            target_nodes = min(max(hours * 2, 8), 40)
+            user_message += f"\nTarget node count ≈ {target_nodes} (keep between {target_nodes - 2} and {target_nodes + 2})."
         user_message += "\nPlease follow the developer instructions."
+        
+        print(f"[run_deep_research] User message prepared: {user_message}")
         
         # Build input messages
         input_messages = [
@@ -136,8 +156,23 @@ def run_deep_research(topic: str, client: OpenAI, hours: Optional[int] = None, e
             }
         ]
 
-        # Tools configuration (no code_interpreter since no PDFs in v0.1)
-        tools = [{"type": "web_search_preview"}]
+        # Tools configuration
+        tools = [
+            {"type": "web_search_preview"},
+            # {
+            #   "type": "code_interpreter",
+            #   "container": {
+            #     "type": "auto",
+            #     "file_ids": []
+            #   }
+            # }
+          ]
+        
+        print("messages", input_messages)
+
+        # FIXME remove this later
+        # FIXME make it use the data format according to the new prompt
+        raise Exception("stop")
 
         print("Submitting deep-research job …")
         resp = client.responses.create(

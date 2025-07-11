@@ -34,7 +34,8 @@ from backend.jobs import (
     clarify_topic,
     is_skip_response,
     process_clarification_responses,
-    run_deep_research_job
+    run_deep_research_job,
+    rewrite_topic
 )
 from utils.config import (
     load_api_key, 
@@ -78,10 +79,6 @@ def init_session_state():
         st.session_state.in_session = False
     if "api_key" not in st.session_state:
         st.session_state.api_key = load_api_key()
-    if "clarification_state" not in st.session_state:
-        st.session_state.clarification_state = None
-    if "clarification_attempts" not in st.session_state:
-        st.session_state.clarification_attempts = 0
     if "messages" not in st.session_state:
         st.session_state.messages = []
     if "tutor_session_id" not in st.session_state:
@@ -236,74 +233,95 @@ def show_api_key_modal():
 
 def handle_clarification(topic: str, hours: int):
     """Handle the clarification flow"""
+    print(f"\n[handle_clarification] Starting with topic: '{topic}', hours: {hours}")
+    
     # Set URL parameters for bookmarkability
     URLManager.navigate_to_clarify(topic, hours)
     
-    # Check if we need clarification
-    if st.session_state.clarification_state is None:
-        with st.spinner("🔍 Analyzing your topic..."):
+    # Check if we need to get clarification questions
+    if "clarification_questions" not in st.session_state:
+        print("[handle_clarification] No questions in session state, fetching...")
+        with st.spinner("🔍 Preparing clarification questions..."):
             try:
-                result = clarify_topic(topic, hours)
-                st.session_state.clarification_state = result
-                st.session_state.clarification_attempts = 0
+                questions = clarify_topic(topic, hours)
+                st.session_state.clarification_questions = questions
+                st.session_state.original_topic = topic
+                st.session_state.original_hours = hours
+                print(f"[handle_clarification] Got {len(questions)} questions")
             except Exception as e:
+                print(f"[handle_clarification] ERROR getting questions: {str(e)}")
                 st.error(f"Error during topic analysis: {str(e)}")
                 return
     
-    result = st.session_state.clarification_state
+    # Show clarification UI in centered column
+    col1, col2, col3 = st.columns([1, 2, 1])
     
-    if result["need_clarification"]:
-        # Show clarification in centered column
-        col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown("### 🤔 Let me understand better...")
+        st.info(f"I'd like to understand more about **\"{topic}\"** to create the best learning plan for you.")
         
-        with col2:
-            st.markdown("### 🤔 Let me understand better...")
-            st.info(f"I'd like to narrow down **\"{topic}\"** to create a more focused learning plan.")
+        # Display questions
+        st.markdown("#### 📝 Clarification Questions")
+        st.markdown("*Please answer the questions below. Feel free to be as detailed as you'd like, or leave questions blank if they don't apply.*")
+        
+        # Show all questions
+        questions = st.session_state.clarification_questions
+        st.markdown("---")
+        for i, question in enumerate(questions, 1):
+            st.markdown(f"**{i}.** {question}")
+        st.markdown("---")
+        
+        # Single text area for all answers
+        user_answers = st.text_area(
+            "Your answers:",
+            height=200,
+            placeholder="Type your answers here. You can answer all questions together or number your responses (1., 2., etc.)",
+            key="clarification_answers"
+        )
+        
+        if st.button("✅ Submit Answers", type="primary", use_container_width=True):
+            print(f"[handle_clarification] User submitted answers, length: {len(user_answers)} chars")
             
-            # Show questions in expandable section
-            with st.expander("📝 Clarification Questions", expanded=True):
-                st.markdown("*Please answer the questions below to help me understand what you want to learn. You can type 'skip' for any question you're unsure about.*")
-                
-                responses = []
-                for i, question in enumerate(result["questions"]):
-                    response = st.text_input(
-                        f"**{i+1}.** {question}",
-                        key=f"clarification_q_{i}",
-                        placeholder="Your answer (or type 'skip')"
-                    )
-                    responses.append(response)
-            
-            col_a, col_b = st.columns(2)
-            with col_a:
-                if st.button("✅ Submit Answers", type="primary", use_container_width=True):
-                    # Check for skip responses
-                    skip_count = sum(1 for r in responses if is_skip_response(r))
-                    
-                    if skip_count == len(responses) and st.session_state.clarification_attempts < 2:
-                        st.warning("⚠️ Please try to answer at least one question to help me create a better learning plan.")
-                        st.session_state.clarification_attempts += 1
-                    else:
-                        # Process responses
-                        refined_topic = process_clarification_responses(result["questions"], responses)
-                        if refined_topic:
-                            topic = refined_topic
+            if not user_answers.strip():
+                print("[handle_clarification] Empty answers, using original topic")
+                st.warning("No answers provided. Using your original topic.")
+                # Use original topic
+                start_deep_research(topic, hours)
+            else:
+                print("[handle_clarification] Processing answers...")
+                # Rewrite topic based on answers
+                with st.spinner("🔄 Processing your answers..."):
+                    try:
+                        rewritten_topic = rewrite_topic(
+                            st.session_state.original_topic,
+                            questions,
+                            user_answers
+                        )
+                        print(f"[handle_clarification] Got rewritten topic: '{rewritten_topic}'")
                         
-                        # Start Deep Research
-                        start_deep_research(topic, hours)
-            
-            with col_b:
-                if st.button("⏩ Skip Clarification", use_container_width=True):
-                    # Use original topic
-                    start_deep_research(topic, hours)
-    else:
-        # No clarification needed, start Deep Research directly
-        refined_topic = result.get("refined_topic", topic)
-        start_deep_research(refined_topic, hours)
+                        # Clear clarification state
+                        if "clarification_questions" in st.session_state:
+                            del st.session_state.clarification_questions
+                        if "original_topic" in st.session_state:
+                            del st.session_state.original_topic
+                        if "original_hours" in st.session_state:
+                            del st.session_state.original_hours
+                        
+                        # Start Deep Research with rewritten topic
+                        start_deep_research(rewritten_topic, hours)
+                    except Exception as e:
+                        print(f"[handle_clarification] ERROR rewriting topic: {str(e)}")
+                        st.error(f"Error processing your answers: {str(e)}")
 
 
 def start_deep_research(topic: str, hours: int):
     """Start the Deep Research process"""
-    st.session_state.clarification_state = None  # Reset clarification
+    print(f"\n[start_deep_research] Starting deep research for topic: '{topic}'")
+    
+    # Clear any clarification-related session state
+    for key in ["clarification_questions", "original_topic", "original_hours"]:
+        if key in st.session_state:
+            del st.session_state[key]
     
     # Show progress in centered column
     col1, col2, col3 = st.columns([1, 2, 1])
