@@ -10,7 +10,6 @@ from typing import Dict, List, Optional
 import openai
 from openai import OpenAI
 from utils.config import CHAT_MODEL, load_api_key
-from utils.deep_research import run_deep_research as deep_research_api
 from utils.deep_research import TOPIC_CLARIFYING_PROMPT, TOPIC_REWRITING_PROMPT
 
 
@@ -254,89 +253,99 @@ def process_clarification_responses(questions: List[str], responses: List[str]) 
         raise RuntimeError(f"Failed to process clarification responses: {e}")
 
 
-def run_deep_research_job(topic: str, hours: Optional[int] = None) -> Dict:
-    """
-    Wrapper for Deep Research API call with error handling and partial result recovery.
-    Adapted from 02-topic-then-deep-research.py
+# def run_deep_research_job(topic: str, hours: Optional[int] = None) -> Dict:
+#     """
+#     Wrapper for Deep Research API call with error handling and partial result recovery.
+#     Adapted from 02-topic-then-deep-research.py
     
-    Returns:
-        Dict with report_markdown, graph, and footnotes
-    """
-    print(f"\n[run_deep_research_job] Starting deep research")
-    print(f"[run_deep_research_job] Topic: '{topic}'")
-    if hours:
-        print(f"[run_deep_research_job] Hours: {hours}")
+#     Returns:
+#         Dict with report_markdown, graph, and footnotes
+#     """
+#     print(f"\n[run_deep_research_job] Starting deep research")
+#     print(f"[run_deep_research_job] Topic: '{topic}'")
+#     if hours:
+#         print(f"[run_deep_research_job] Hours: {hours}")
     
-    # Get API key and create client
-    api_key = load_api_key()
-    if not api_key:
-        raise ValueError("OpenAI API key not found. Please configure your API key.")
+#     # Get API key and create client
+#     api_key = load_api_key()
+#     if not api_key:
+#         raise ValueError("OpenAI API key not found. Please configure your API key.")
     
-    client = OpenAI(api_key=api_key)
+#     client = OpenAI(api_key=api_key)
     
-    try:
-        # Call the deep research API
-        print("[run_deep_research_job] Calling deep research API...")
-        result = deep_research_api(topic, client, hours)
+#     try:
+#         # Call the deep research API
+#         print("[run_deep_research_job] Calling deep research API...")
+#         job_id = start_deep_research_job(topic, hours)
+
+#         # Poll for completion
+#         resp = poll_background_job(client, job_id)
         
-        print("[run_deep_research_job] Deep research completed, validating results...")
+#         if resp.status != "completed":
+#             raise RuntimeError(f"Job ended with status {resp.status}")
+
+#         # Extract the final assistant message
+#         content_block = resp.output[-1].content[0]
+#         result = wait_for_deep_research_out(job_id)
         
-        # Validate result has required fields
-        if "report_markdown" not in result:
-            # Try to salvage partial results
-            if "graph" in result:
-                result["report_markdown"] = f"# {topic}\n\n*Note: Report generation failed, but knowledge graph was created successfully.*"
-            else:
-                raise ValueError("Missing report_markdown in Deep Research result")
+#         print("[run_deep_research_job] Deep research completed, validating results...")
         
-        if "graph" not in result:
-            raise ValueError("Missing graph in Deep Research result")
+#         # Validate result has required fields
+#         if "report_markdown" not in result:
+#             # Try to salvage partial results
+#             if "graph" in result:
+#                 result["report_markdown"] = f"# {topic}\n\n*Note: Report generation failed, but knowledge graph was created successfully.*"
+#             else:
+#                 raise ValueError("Missing report_markdown in Deep Research result")
         
-        # Ensure graph has required structure
-        if "nodes" not in result["graph"]:
-            result["graph"]["nodes"] = []
-        if "edges" not in result["graph"]:
-            result["graph"]["edges"] = []
+#         if "graph" not in result:
+#             raise ValueError("Missing graph in Deep Research result")
         
-        if "footnotes" not in result:
-            result["footnotes"] = {}  # Default to empty if missing
+#         # Ensure graph has required structure
+#         if "nodes" not in result["graph"]:
+#             result["graph"]["nodes"] = []
+#         if "edges" not in result["graph"]:
+#             result["graph"]["edges"] = []
         
-        print(f"[run_deep_research_job] Found {len(result['graph']['nodes'])} nodes and {len(result['graph']['edges'])} edges")
+#         if "footnotes" not in result:
+#             result["footnotes"] = {}  # Default to empty if missing
         
-        # Validate nodes have learning objectives
-        for i, node in enumerate(result["graph"]["nodes"]):
-            if "learning_objectives" not in node or not node["learning_objectives"]:
-                print(f"[run_deep_research_job] Warning: Node '{node.get('label', 'unknown')}' missing learning objectives, generating defaults")
-                # Generate placeholder objectives if missing
-                node["learning_objectives"] = [
-                    f"Understand the key concepts of {node['label']}",
-                    f"Apply {node['label']} principles in practice",
-                    f"Analyze relationships between {node['label']} and related topics",
-                    f"Evaluate different approaches to {node['label']}",
-                    f"Create solutions using {node['label']} knowledge"
-                ]
+#         print(f"[run_deep_research_job] Found {len(result['graph']['nodes'])} nodes and {len(result['graph']['edges'])} edges")
         
-        print("[run_deep_research_job] Deep research validation complete")
-        return result
+#         # Validate nodes have learning objectives
+#         for i, node in enumerate(result["graph"]["nodes"]):
+#             if "learning_objectives" not in node or not node["learning_objectives"]:
+#                 print(f"[run_deep_research_job] Warning: Node '{node.get('label', 'unknown')}' missing learning objectives, generating defaults")
+#                 # Generate placeholder objectives if missing
+#                 node["learning_objectives"] = [
+#                     f"Understand the key concepts of {node['label']}",
+#                     f"Apply {node['label']} principles in practice",
+#                     f"Analyze relationships between {node['label']} and related topics",
+#                     f"Evaluate different approaches to {node['label']}",
+#                     f"Create solutions using {node['label']} knowledge"
+#                 ]
         
-    except openai.AuthenticationError:
-        print("[run_deep_research_job] ERROR: Authentication failed")
-        raise RuntimeError("Invalid API key. Please check your OpenAI API key.")
-    except openai.PermissionDeniedError:
-        print("[run_deep_research_job] ERROR: Permission denied")
-        raise RuntimeError("API key doesn't have access to Deep Research model.")
-    except openai.RateLimitError:
-        print("[run_deep_research_job] ERROR: Rate limit exceeded")
-        raise RuntimeError("Rate limit exceeded. Please try again in a few minutes.")
-    except openai.APIError as e:
-        print(f"[run_deep_research_job] ERROR: OpenAI API error: {str(e)}")
-        raise RuntimeError(f"OpenAI API error: {str(e)}")
-    except Exception as e:
-        print(f"[run_deep_research_job] ERROR: {type(e).__name__}: {str(e)}")
-        raise RuntimeError(f"Deep Research failed: {str(e)}") 
+#         print("[run_deep_research_job] Deep research validation complete")
+#         return result
+        
+#     except openai.AuthenticationError:
+#         print("[run_deep_research_job] ERROR: Authentication failed")
+#         raise RuntimeError("Invalid API key. Please check your OpenAI API key.")
+#     except openai.PermissionDeniedError:
+#         print("[run_deep_research_job] ERROR: Permission denied")
+#         raise RuntimeError("API key doesn't have access to Deep Research model.")
+#     except openai.RateLimitError:
+#         print("[run_deep_research_job] ERROR: Rate limit exceeded")
+#         raise RuntimeError("Rate limit exceeded. Please try again in a few minutes.")
+#     except openai.APIError as e:
+#         print(f"[run_deep_research_job] ERROR: OpenAI API error: {str(e)}")
+#         raise RuntimeError(f"OpenAI API error: {str(e)}")
+#     except Exception as e:
+#         print(f"[run_deep_research_job] ERROR: {type(e).__name__}: {str(e)}")
+#         raise RuntimeError(f"Deep Research failed: {str(e)}") 
 
 
-def start_deep_research_job(topic: str, hours: Optional[int] = None) -> str:
+def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptSalvagedTxt: str = None, research_model: str = None) -> str:
     """
     Start a deep research job and return the job_id immediately.
     The job will run in the background on OpenAI's servers.
@@ -362,14 +371,20 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None) -> str:
     try:
         # Import the DEVELOPER_PROMPT and model from deep_research module
         from utils.deep_research import DEVELOPER_PROMPT, DEEP_RESEARCH_MODEL
+
+        research_model = research_model or DEEP_RESEARCH_MODEL
+        print(f"[start_deep_research_job] Using model: {research_model}")
         
         # Prepare the user message with optional hours
         user_message = f"Topic: {topic}"
         if hours:
-            user_message += f"\nTarget study time: {hours} hours"
+            user_message += f"\n\nTime user wants to invest to study: {hours} hours"
             target_nodes = min(max(hours * 2, 4), 40)
             user_message += f"\nTarget node count ≈ {target_nodes} (keep between {target_nodes - 2} and {target_nodes + 2})."
         user_message += "\nPlease follow the developer instructions."
+
+        if oldAttemptSalvagedTxt:
+            user_message += "\n\n"+oldAttemptSalvagedTxt
         
         print(f"[start_deep_research_job] User message: {user_message}")
         
@@ -390,7 +405,7 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None) -> str:
         
         print("[start_deep_research_job] Submitting deep-research job...")
         resp = client.responses.create(
-            model=DEEP_RESEARCH_MODEL,
+            model=research_model,
             background=True,
             input=input_messages,
             tools=tools,

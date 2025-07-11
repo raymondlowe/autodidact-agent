@@ -218,6 +218,7 @@ elif st.session_state.new_project_view == 'confirmation':
                     # Create project with job_id
                     project_id = create_project_with_job(
                         topic=st.session_state.final_topic,
+                        name=st.session_state.init_topic,  # Use initial topic as name
                         job_id=job_id,
                         status='processing'
                     )

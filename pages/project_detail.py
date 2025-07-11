@@ -8,14 +8,17 @@ import json
 import time
 from pathlib import Path
 from backend.db import (
+    check_job,
     get_project, 
     check_and_complete_job, 
     get_next_nodes,
     get_db_connection,
     create_session,
     get_session_stats,
-    get_all_projects  # Add this import
+    get_all_projects,
+    update_project_with_job  # Add this import
 )
+from backend.jobs import start_deep_research_job
 from components.graph_viz import create_knowledge_graph, format_report_with_footnotes
 from utils.config import save_project_files
 
@@ -45,7 +48,9 @@ if not project:
     st.stop()
 
 # Page header
-st.markdown(f"# 📚 {project['topic']}")
+# Use name if available, otherwise fallback to topic
+display_name = project.get('name') or project['topic']
+st.markdown(f"# 📚 {display_name}")
 
 # Check project status
 if project['status'] == 'processing' and project['job_id']:
@@ -100,11 +105,48 @@ elif project['status'] == 'failed':
     Please try creating a new project with a slightly different topic description.
     """)
     
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
+        if st.button("Retry with o3", type="primary"):
+            print(f"[project_detail.py] Project: {project}")
+            old_job_id = project['job_id']
+            old_job_response = check_job(old_job_id)
+            # print(f"[project_detail.py] Old job result: {old_job_response}")
+            reasoning_texts = []
+            for item in old_job_response.output:
+                # print(f"[project_detail.py] Item.type: {item.type}")
+                if item.type == "reasoning":
+                    for summary in item.summary:
+                        reasoning_texts.append(summary.text)
+
+            # FIXME: unsure if we should even do anything with this: combined_text
+            combined_text = "An earlier research model failed partway, here are it's reasoning texts on the same prompt, in case those are useful:" + "\n\n".join(reasoning_texts)
+
+            # print(f"[project_detail.py] Combined text: {combined_text}")
+
+            # FIXME: add project['hours'] to schema 
+
+            # KeyError: 'hours'
+            # if project has key hours, do something else do something else
+            if 'hours' in project:
+                hours = project['hours']
+            else:
+                hours = 5
+
+            new_job_id = start_deep_research_job(project['topic'], hours, combined_text, "o3")
+            print(f"[project_detail.py] New Job ID: {new_job_id}")
+            update_project_with_job(
+                        project_id=project_id,
+                        job_id=new_job_id,
+                        status='processing'
+                    )
+            print(f"[project_detail.py] Project ID: {project_id}")
+
+            st.rerun()
+    with col2:
         if st.button("➕ Create New Project", type="primary"):
             st.switch_page("pages/new_project.py")
-    with col2:
+    with col3:
         if st.button("🏠 Go Home"):
             st.switch_page("pages/home.py")
 

@@ -40,11 +40,15 @@ def init_database():
     schema = """
     CREATE TABLE IF NOT EXISTS project (
         id TEXT PRIMARY KEY,
+        name TEXT,
         topic TEXT NOT NULL,
         report_path TEXT,
         graph_json TEXT,
         footnotes_json TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        job_id TEXT,
+        status TEXT DEFAULT 'completed',
+        hours INTEGER DEFAULT 5
     );
 
     CREATE TABLE IF NOT EXISTS node (
@@ -137,7 +141,7 @@ def create_project(topic: str, report_path: str, graph_json: Dict, footnotes: Di
             raise RuntimeError(f"Failed to create project: {str(e)}")
 
 
-def create_project_with_job(topic: str, job_id: str, status: str = 'processing') -> str:
+def create_project_with_job(topic: str, name: str, job_id: str, status: str = 'processing', hours: int = 5) -> str:
     """Create a new project with a job ID for background processing"""
     project_id = str(uuid.uuid4())
     
@@ -145,13 +149,15 @@ def create_project_with_job(topic: str, job_id: str, status: str = 'processing')
         try:
             conn.execute("BEGIN TRANSACTION")
             conn.execute("""
-                INSERT INTO project (id, topic, job_id, status)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO project (id, name, topic, job_id, status, hours)
+                VALUES (?, ?, ?, ?, ?, ?)
             """, (
                 project_id,
+                name,
                 topic,
                 job_id,
-                status
+                status,
+                hours
             ))
             conn.commit()
             return project_id
@@ -159,6 +165,15 @@ def create_project_with_job(topic: str, job_id: str, status: str = 'processing')
             conn.rollback()
             raise RuntimeError(f"Failed to create project with job: {str(e)}")
 
+
+# add an update_project_with_job function
+def update_project_with_job(project_id: str, job_id: str, status: str = 'processing'):
+    """Update a project with a job ID for background processing"""
+    with get_db_connection() as conn:
+        conn.execute("""
+            UPDATE project SET job_id = ?, status = ? WHERE id = ?
+        """, (job_id, status, project_id))
+        conn.commit()
 
 def update_project_status(project_id: str, status: str):
     """Update the status of a project"""
@@ -203,6 +218,8 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
     from openai import OpenAI
     from utils.config import load_api_key, save_project_files
     from utils.deep_research import extract_graph_and_footnotes
+
+    print(f"[check_and_complete_job] Checking job {job_id} for project {project_id}")
     
     api_key = load_api_key()
     if not api_key:
@@ -230,6 +247,10 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
                 update_project_status(project_id, 'failed')
                 return True
             
+            # FIXME: handle data properly here
+            # might need to pass to some other system to 
+            # thought o3 but maybe not? takes too long
+            
             # Validate and extract components
             if "resources" in data and "nodes" in data:
                 # New format from DEVELOPER_PROMPT
@@ -249,7 +270,8 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
                             })
                 
                 # Create report from resources
-                report_markdown = f"# {get_project(project_id)['topic']}\n\n## Resources\n\n"
+                project = get_project(project_id)
+                report_markdown = f"# {project['name']}\n\n## Resources\n\n"
                 for resource in data["resources"]:
                     report_markdown += f"- [{resource['title']}]({resource['url']}) - {resource['scope']}\n"
                 
@@ -282,7 +304,7 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
                 project_id,
                 report_markdown,
                 graph,
-                {"resources": data.get("resources", []), "raw_response": data}
+                data
             )
             
             # Update project with results
@@ -319,6 +341,31 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
         print(f"[check_and_complete_job] Error checking job: {e}")
         # Don't mark as failed on transient errors
         return False
+    
+def check_job(job_id: str) -> bool:
+    """
+    Check job status and returns result.
+    """
+    from openai import OpenAI
+    from utils.config import load_api_key, save_project_files
+    from utils.deep_research import extract_graph_and_footnotes
+
+    print(f"[check_job] Checking job {job_id}")
+    
+    api_key = load_api_key()
+    if not api_key:
+        raise ValueError("OpenAI API key not found")
+    
+    client = OpenAI(api_key=api_key)
+    
+    try:
+        # Retrieve job status
+        job = client.responses.retrieve(job_id)
+        return job
+    except Exception as e:
+        print(f"[check_job] Error checking job: {e}")
+        # Don't mark as failed on transient errors
+        return None
 
 
 def save_graph_to_db(project_id: str, graph_data: Dict[str, Any]):
@@ -461,20 +508,22 @@ def get_project(project_id: str) -> Optional[Dict]:
     """Get project details by ID"""
     with get_db_connection() as conn:
         cursor = conn.execute(
-            "SELECT id, topic, report_path, graph_json, footnotes_json, created_at, job_id, status FROM project WHERE id = ?", 
+            "SELECT id, name, topic, report_path, graph_json, footnotes_json, created_at, job_id, status, hours FROM project WHERE id = ?", 
             (project_id,)
         )
         row = cursor.fetchone()
         if row:
             return {
                 "id": row[0],
-                "topic": row[1],
-                "report_path": row[2],
-                "graph_json": row[3],
-                "footnotes_json": row[4],
-                "created_at": row[5],
-                "job_id": row[6],
-                "status": row[7] or 'completed'  # Default for old projects
+                "name": row[1],
+                "topic": row[2],
+                "report_path": row[3],
+                "graph_json": row[4],
+                "footnotes_json": row[5],
+                "created_at": row[6],
+                "job_id": row[7],
+                "status": row[8] or 'completed',  # Default for old projects
+                "hours": row[9] or 5  # Default to 5 hours for old projects
             }
     return None
 
@@ -542,6 +591,7 @@ def get_all_projects() -> List[Dict[str, Any]]:
         cursor = conn.execute("""
             SELECT 
                 p.id,
+                p.name,
                 p.topic,
                 p.created_at,
                 p.status,
@@ -557,12 +607,13 @@ def get_all_projects() -> List[Dict[str, Any]]:
         return [
             {
                 "id": row[0],
-                "topic": row[1],
-                "created_at": row[2],
-                "status": row[3] or 'completed',  # Default to completed for old projects
-                "total_nodes": row[4],
-                "mastered_nodes": row[5],
-                "progress": int(row[6] or 0)
+                "name": row[1],
+                "topic": row[2],
+                "created_at": row[3],
+                "status": row[4] or 'completed',  # Default to completed for old projects
+                "total_nodes": row[5],
+                "mastered_nodes": row[6],
+                "progress": int(row[7] or 0)
             }
             for row in cursor.fetchall()
         ]

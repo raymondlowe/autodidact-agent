@@ -44,9 +44,10 @@ def show_sidebar():
                 with st.container():
                     col1, col2 = st.columns([4, 1])
                     with col1:
-                        name_orig = project['topic']
+                        # Use name if available, otherwise fallback to topic
+                        name_orig = project.get('name') or project['topic']
                         name = name_orig[:25]
-                        if name!=name_orig:
+                        if name != name_orig:
                             name = name + "..."
                         
                         if st.button(
