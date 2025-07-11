@@ -413,6 +413,42 @@ def get_session_stats(project_id: str) -> Dict[str, Any]:
         }
 
 
+def get_session_info(session_id: str) -> Optional[Dict[str, Any]]:
+    """Get full session information including project and node details"""
+    with get_db_connection() as conn:
+        cursor = conn.execute("""
+            SELECT 
+                s.id,
+                s.project_id,
+                s.node_id,
+                s.status,
+                s.session_number,
+                s.final_score,
+                p.topic as project_topic,
+                n.label as node_label,
+                n.original_id as node_original_id
+            FROM session s
+            JOIN project p ON s.project_id = p.id
+            JOIN node n ON s.node_id = n.id
+            WHERE s.id = ?
+        """, (session_id,))
+        
+        row = cursor.fetchone()
+        if row:
+            return {
+                "id": row[0],
+                "project_id": row[1],
+                "node_id": row[2],
+                "status": row[3],
+                "session_number": row[4],
+                "final_score": row[5],
+                "project_topic": row[6],
+                "node_label": row[7],
+                "node_original_id": row[8]
+            }
+        return None
+
+
 # Initialize database on module import
 if __name__ != "__main__":
     init_database() 

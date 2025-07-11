@@ -27,7 +27,8 @@ from backend.db import (
     create_session,
     has_previous_sessions,
     complete_session,
-    get_session_stats
+    get_session_stats,
+    get_session_info
 )
 from backend.jobs import (
     clarify_topic,
@@ -41,6 +42,7 @@ from utils.config import (
     CONFIG_FILE,
     save_project_files
 )
+from utils.url_manager import URLManager
 from components.graph_viz import (
     create_knowledge_graph,
     format_report_with_footnotes
@@ -62,7 +64,12 @@ init_database()
 
 
 def init_session_state():
-    """Initialize Streamlit session state variables"""
+    """Initialize Streamlit session state variables with URL parameter checking"""
+    
+    # First check URL parameters
+    url_state = URLManager.validate_and_restore_state()
+    
+    # Initialize basic session state
     if "project_id" not in st.session_state:
         st.session_state.project_id = None
     if "current_node" not in st.session_state:
@@ -85,6 +92,63 @@ def init_session_state():
         st.session_state.current_phase = "greet"
     if "has_previous_session" not in st.session_state:
         st.session_state.has_previous_session = False
+    
+    # Now restore from URL if valid
+    if url_state["valid"]:
+        if url_state["view"] == "workspace" and url_state["project_id"]:
+            # Validate project exists
+            project = get_project(url_state["project_id"])
+            if project:
+                st.session_state.project_id = url_state["project_id"]
+                st.session_state.in_session = False
+                st.session_state.current_node = None
+            else:
+                # Invalid project, redirect to welcome
+                st.error("Project not found")
+                URLManager.navigate_to_welcome()
+                st.rerun()
+                
+        elif url_state["view"] == "session" and url_state["session_id"]:
+            # Validate and restore session
+            session_info = get_session_info(url_state["session_id"])
+            if session_info:
+                st.session_state.project_id = session_info["project_id"]
+                st.session_state.current_node = session_info["node_id"]
+                st.session_state.tutor_session_id = url_state["session_id"]
+                st.session_state.in_session = True
+                
+                # Restore messages if session is in progress
+                if session_info["status"] == "in_progress":
+                    transcript = get_transcript_for_session(url_state["session_id"])
+                    st.session_state.messages = [
+                        {"role": entry["role"], "content": entry["content"]}
+                        for entry in transcript
+                    ]
+                    st.session_state.turn_count = len(transcript)
+                    
+                    # Determine phase from transcript
+                    if any("Let's see what you've learned" in msg["content"] for msg in st.session_state.messages):
+                        st.session_state.current_phase = "grade"
+                    elif len([m for m in st.session_state.messages if m["role"] == "user"]) >= 2:
+                        st.session_state.current_phase = "quick_check"
+                    else:
+                        st.session_state.current_phase = "teach"
+                else:
+                    # Session is completed, show read-only view
+                    st.session_state.messages = [
+                        {"role": entry["role"], "content": entry["content"]}
+                        for entry in get_transcript_for_session(url_state["session_id"])
+                    ]
+            else:
+                # Invalid session, redirect to welcome
+                st.error("Session not found")
+                URLManager.navigate_to_welcome()
+                st.rerun()
+                
+        elif url_state["view"] == "clarify":
+            # Handle clarification flow
+            st.session_state.clarification_topic = url_state["topic"]
+            st.session_state.clarification_hours = url_state["hours"]
 
 
 def show_api_key_modal():
@@ -172,6 +236,9 @@ def show_api_key_modal():
 
 def handle_clarification(topic: str, hours: int):
     """Handle the clarification flow"""
+    # Set URL parameters for bookmarkability
+    URLManager.navigate_to_clarify(topic, hours)
+    
     # Check if we need clarification
     if st.session_state.clarification_state is None:
         with st.spinner("🔍 Analyzing your topic..."):
@@ -299,6 +366,9 @@ def start_deep_research(topic: str, hours: int):
                 st.success("✅ **Research complete!**\n\nYour personalized learning plan is ready.")
                 st.balloons()
                 
+                # Navigate to project workspace
+                URLManager.navigate_to_project(project_id)
+                
                 # Wait a moment before redirecting
                 import time
                 time.sleep(2)
@@ -314,10 +384,21 @@ def start_deep_research(topic: str, hours: int):
                     "- Try a more specific topic\n"
                     "- Check your internet connection"
                 )
+                # Clear URL on error
+                URLManager.navigate_to_welcome()
 
 
 def show_welcome_screen():
     """Show the welcome/landing screen"""
+    # Check if we have clarification parameters in URL
+    if hasattr(st.session_state, 'clarification_topic') and st.session_state.clarification_topic:
+        # Handle clarification from URL
+        handle_clarification(
+            st.session_state.clarification_topic,
+            st.session_state.clarification_hours
+        )
+        return
+    
     # Centered layout with columns
     col1, col2, col3 = st.columns([1, 2, 1])
     
@@ -387,6 +468,12 @@ def show_welcome_screen():
             - Digital Marketing Strategy
             - Financial Derivatives Explained
             """)
+            
+        # Show current URL for debugging (remove in production)
+        with st.expander("🔗 Share this page", expanded=False):
+            current_url = URLManager.get_shareable_link()
+            st.code(current_url, language=None)
+            st.caption("Copy this link to bookmark or share your current view")
 
 
 def show_workspace():
@@ -395,9 +482,16 @@ def show_workspace():
     if not project:
         st.error("Project not found!")
         if st.button("Go Back"):
-            st.session_state.project_id = None
+            URLManager.navigate_to_welcome()
             st.rerun()
         return
+    
+    # Breadcrumb navigation
+    col1, col2, col3 = st.columns([1, 6, 1])
+    with col1:
+        if st.button("🏠 Home", use_container_width=True):
+            URLManager.navigate_to_welcome()
+            st.rerun()
     
     # Project header
     st.markdown(f"# 📚 {project['topic']}")
@@ -419,8 +513,12 @@ def show_workspace():
             if len(next_nodes) == 1:
                 st.info(f"**Ready to learn:**\n\n📖 {next_nodes[0]['label']}")
                 if st.button("Start Session →", type="primary", use_container_width=True):
-                    st.session_state.current_node = next_nodes[0]['id']
-                    st.session_state.in_session = True
+                    # Create new session and navigate
+                    session_id = create_session(
+                        st.session_state.project_id,
+                        next_nodes[0]['id']
+                    )
+                    URLManager.navigate_to_session(session_id)
                     st.rerun()
             else:
                 # Multiple options
@@ -432,8 +530,12 @@ def show_workspace():
                     label_visibility="collapsed"
                 )
                 if st.button("Start Session →", type="primary", use_container_width=True):
-                    st.session_state.current_node = selected
-                    st.session_state.in_session = True
+                    # Create new session and navigate
+                    session_id = create_session(
+                        st.session_state.project_id,
+                        selected
+                    )
+                    URLManager.navigate_to_session(session_id)
                     st.rerun()
         else:
             st.success("🎉 **Congratulations!**\n\nYou've completed all available topics!")
@@ -541,6 +643,13 @@ def show_workspace():
                 with col3:
                     st.metric("Avg Score", f"{int(session_stats['average_score'] * 100)}%")
             
+            # Shareable link
+            st.markdown("---")
+            with st.expander("🔗 Share this project", expanded=False):
+                current_url = URLManager.get_shareable_link()
+                st.code(current_url, language=None)
+                st.caption("Bookmark this link to return to this project anytime")
+            
         except Exception as e:
             st.error(f"Error displaying graph: {str(e)}")
             # Show raw graph data as fallback
@@ -553,7 +662,7 @@ def show_tutor_session():
     if not st.session_state.current_node:
         st.error("No node selected for tutoring")
         if st.button("Go Back"):
-            st.session_state.in_session = False
+            URLManager.navigate_to_project(st.session_state.project_id)
             st.rerun()
         return
     
@@ -562,6 +671,13 @@ def show_tutor_session():
     if not node_info:
         st.error("Node not found!")
         return
+    
+    # Check if this is a completed session
+    if st.session_state.tutor_session_id:
+        session_info = get_session_info(st.session_state.tutor_session_id)
+        if session_info and session_info["status"] == "completed":
+            # Show read-only completed session
+            st.info(f"📚 **Completed Session** - Score: {int(session_info['final_score'] * 100)}%")
     
     # Header
     st.markdown(f"# 🎓 Learning Session: {node_info['label']}")
@@ -578,12 +694,17 @@ def show_tutor_session():
         st.markdown("---")
         
         if st.button("🚪 Exit Session", type="secondary", use_container_width=True):
-            st.session_state.in_session = False
-            st.session_state.messages = []
+            URLManager.navigate_to_project(st.session_state.project_id)
             st.rerun()
     
-    # Initialize or recover session
-    if "tutor_session_id" not in st.session_state:
+    # Check if session was already initialized from URL
+    session_initialized_from_url = (
+        st.session_state.tutor_session_id and 
+        len(st.session_state.messages) > 0
+    )
+    
+    # Initialize or recover session (skip if already initialized from URL)
+    if not session_initialized_from_url and "tutor_session_id" not in st.session_state:
         # Check for existing session to recover
         latest_session = get_latest_session_for_node(
             st.session_state.project_id, 
@@ -612,7 +733,7 @@ def show_tutor_session():
             
             st.info("✅ Previous session recovered!")
         else:
-            # Start new session
+            # Start new session (this shouldn't happen if we came from URL)
             st.session_state.tutor_session_id = create_session(
                 st.session_state.project_id,
                 st.session_state.current_node
@@ -636,33 +757,42 @@ def show_tutor_session():
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
     
-    # Input area
-    if prompt := st.chat_input("Your response...", key="tutor_chat"):
-        # Add user message
-        st.session_state.messages.append({
-            "role": "user",
-            "content": prompt
-        })
-        
-        # Save to transcript
-        save_transcript(
-            st.session_state.tutor_session_id,
-            st.session_state.turn_count,
-            "user",
-            prompt
-        )
-        st.session_state.turn_count += 1
-        
-        # Display user message
-        with st.chat_message("user"):
-            st.markdown(prompt)
-        
-        # Run tutor graph
-        run_tutor_response()
+    # Check if session is completed (disable input)
+    is_completed = False
+    if st.session_state.tutor_session_id:
+        session_info = get_session_info(st.session_state.tutor_session_id)
+        is_completed = session_info and session_info["status"] == "completed"
     
-    # If no messages yet, start the session
-    elif len(st.session_state.messages) == 0:
-        run_tutor_response()
+    # Input area (disabled for completed sessions)
+    if not is_completed:
+        if prompt := st.chat_input("Your response...", key="tutor_chat"):
+            # Add user message
+            st.session_state.messages.append({
+                "role": "user",
+                "content": prompt
+            })
+            
+            # Save to transcript
+            save_transcript(
+                st.session_state.tutor_session_id,
+                st.session_state.turn_count,
+                "user",
+                prompt
+            )
+            st.session_state.turn_count += 1
+            
+            # Display user message
+            with st.chat_message("user"):
+                st.markdown(prompt)
+            
+            # Run tutor graph
+            run_tutor_response()
+        
+        # If no messages yet, start the session
+        elif len(st.session_state.messages) == 0:
+            run_tutor_response()
+    else:
+        st.info("This session has been completed. Start a new session to continue learning!")
 
 
 def run_tutor_response():
@@ -718,15 +848,11 @@ def run_tutor_response():
                 col1, col2 = st.columns(2)
                 with col1:
                     if st.button("✅ Complete Session", type="primary", use_container_width=True):
-                        st.session_state.in_session = False
-                        st.session_state.messages = []
-                        st.session_state.tutor_session_id = None
+                        URLManager.navigate_to_project(st.session_state.project_id)
                         st.rerun()
                 with col2:
                     if st.button("📊 View Progress", type="secondary", use_container_width=True):
-                        st.session_state.in_session = False
-                        st.session_state.messages = []
-                        st.session_state.tutor_session_id = None
+                        URLManager.navigate_to_project(st.session_state.project_id)
                         st.rerun()
                     
         except openai.AuthenticationError:
@@ -779,12 +905,7 @@ def main():
         
         # New Project button (always visible)
         if st.button("➕ New Project", type="primary", use_container_width=True):
-            st.session_state.project_id = None
-            st.session_state.current_node = None
-            st.session_state.in_session = False
-            st.session_state.clarification_state = None
-            st.session_state.messages = []
-            st.session_state.tutor_session_id = None
+            URLManager.navigate_to_welcome()
             st.rerun()
         
         st.markdown("---")
@@ -829,11 +950,7 @@ def main():
                             key=f"proj_{project['id']}",
                             use_container_width=True
                         ):
-                            st.session_state.project_id = project['id']
-                            st.session_state.current_node = None
-                            st.session_state.in_session = False
-                            st.session_state.messages = []
-                            st.session_state.tutor_session_id = None
+                            URLManager.navigate_to_project(project['id'])
                             st.rerun()
                     
                     with col2:
