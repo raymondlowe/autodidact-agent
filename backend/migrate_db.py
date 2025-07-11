@@ -264,10 +264,59 @@ def migrate_add_idx_in_node():
         conn.close()
 
 
+def migrate_add_project_id_to_learning_objective():
+    """Add project_id column to learning_objective table"""
+    
+    if not DB_PATH.exists():
+        print("Database does not exist. Run the app first to create it.")
+        return
+    
+    conn = sqlite3.connect(str(DB_PATH))
+    cursor = conn.cursor()
+    
+    try:
+        # Check if column already exists
+        cursor.execute("PRAGMA table_info(learning_objective)")
+        columns = [column[1] for column in cursor.fetchall()]
+        
+        # Add project_id if it doesn't exist
+        if 'project_id' not in columns:
+            # Note: SQLite doesn't support adding NOT NULL columns without a default
+            # So we add it as nullable first
+            cursor.execute("ALTER TABLE learning_objective ADD COLUMN project_id TEXT")
+            print("Added project_id column to learning_objective table")
+            
+            # Populate project_id from the node relationship
+            cursor.execute("""
+                UPDATE learning_objective 
+                SET project_id = (
+                    SELECT n.project_id 
+                    FROM node n 
+                    WHERE n.id = learning_objective.node_id
+                )
+            """)
+            print("Populated project_id values from node relationships")
+            
+            # Note: We can't add the foreign key constraint to existing tables in SQLite
+            # It will only be enforced on new databases created with the schema
+            print("Note: Foreign key constraint will only apply to new databases")
+        else:
+            print("project_id column already exists in learning_objective table")
+        
+        conn.commit()
+        print("Learning objective project_id migration completed successfully!")
+        
+    except Exception as e:
+        print(f"Migration failed: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
+
 if __name__ == "__main__":
     migrate_add_job_fields()
     migrate_add_name_field()
     migrate_add_hours_field()
     migrate_rename_footnotes_to_resources()
     migrate_add_references_sections_json()
-    migrate_add_idx_in_node() 
+    migrate_add_idx_in_node()
+    migrate_add_project_id_to_learning_objective()

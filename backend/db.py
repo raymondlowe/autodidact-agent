@@ -74,10 +74,12 @@ def init_database():
 
     CREATE TABLE IF NOT EXISTS learning_objective (
         id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
         node_id TEXT NOT NULL,
         idx_in_node INTEGER NOT NULL,
         description TEXT NOT NULL,
         mastery REAL DEFAULT 0.0,
+        FOREIGN KEY (project_id) REFERENCES project(id),
         FOREIGN KEY (node_id) REFERENCES node(id)
     );
 
@@ -109,6 +111,7 @@ def init_database():
     CREATE INDEX IF NOT EXISTS idx_node_original ON node(original_id);
     CREATE INDEX IF NOT EXISTS idx_edge_project ON edge(project_id);
     CREATE INDEX IF NOT EXISTS idx_lo_node ON learning_objective(node_id);
+    CREATE INDEX IF NOT EXISTS idx_lo_project ON learning_objective(project_id);
     CREATE INDEX IF NOT EXISTS idx_session_project ON session(project_id);
     CREATE INDEX IF NOT EXISTS idx_session_node ON session(node_id);
     CREATE INDEX IF NOT EXISTS idx_transcript_session ON transcript(session_id);
@@ -383,9 +386,9 @@ def save_graph_to_db(project_id: str, graph_data: Dict[str, Any]):
             # Save learning objectives
             for idx, desc in enumerate(node.get('objectives', [])):
                 conn.execute("""
-                    INSERT INTO learning_objective (id, node_id, idx_in_node, description)
-                    VALUES (?, ?, ?, ?)
-                """, (str(uuid.uuid4()), node_id, idx, desc))
+                    INSERT INTO learning_objective (id, project_id, node_id, idx_in_node, description)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (str(uuid.uuid4()), project_id, node_id, idx, desc))
         
         # Then create edges
         for edge in graph_data['edges']:
@@ -545,7 +548,7 @@ def get_node_with_objectives(node_id: str) -> Optional[Dict]:
         
         # Get learning objectives
         cursor = conn.execute(
-            "SELECT id, description, mastery, idx_in_node FROM learning_objective WHERE node_id = ? ORDER BY idx_in_node",
+            "SELECT id, project_id, description, mastery, idx_in_node FROM learning_objective WHERE node_id = ? ORDER BY idx_in_node",
             (node_id,)
         )
         node_dict['learning_objectives'] = [dict(row) for row in cursor.fetchall()]

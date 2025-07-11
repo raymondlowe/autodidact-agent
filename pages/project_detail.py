@@ -166,11 +166,11 @@ elif project['status'] == 'completed':
                 st.info(f"**Ready to learn:**\n\n📖 {next_nodes[0]['label']}")
                 if st.button("Start Session →", type="primary", use_container_width=True):
                     # Create new session and navigate
-                    test_job()
-                    # session_id = create_session(project_id, next_nodes[0]['id'])
-                    # st.session_state.selected_project_id = project_id
-                    # st.session_state.selected_session_id = session_id
-                    # st.switch_page("pages/session-detail.py")
+                    # FIXME: start with new session and work on getting this flow working
+                    session_id = create_session(project_id, next_nodes[0]['id'])
+                    st.session_state.selected_project_id = project_id
+                    st.session_state.selected_session_id = session_id
+                    st.switch_page("pages/session-detail.py")
             else:
                 # Multiple options
                 st.info("**Choose your next topic:**")

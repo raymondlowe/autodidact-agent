@@ -50,6 +50,7 @@ class Edge:
 class LearningObjective:
     """Represents a learning objective for a node"""
     id: str
+    project_id: str
     node_id: str
     idx_in_node: int
     description: str
