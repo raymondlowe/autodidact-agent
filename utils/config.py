@@ -51,10 +51,10 @@ def save_api_key(api_key: str):
 
 def load_api_key() -> Optional[str]:
     """Load API key from config file or environment"""
-    # First check environment variable
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if api_key:
-        return api_key
+    # # First check environment variable
+    # api_key = os.environ.get("OPENAI_API_KEY")
+    # if api_key:
+    #     return api_key
     
     # Then check config file
     if CONFIG_FILE.exists():

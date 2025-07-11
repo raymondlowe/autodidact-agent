@@ -137,6 +137,190 @@ def create_project(topic: str, report_path: str, graph_json: Dict, footnotes: Di
             raise RuntimeError(f"Failed to create project: {str(e)}")
 
 
+def create_project_with_job(topic: str, job_id: str, status: str = 'processing') -> str:
+    """Create a new project with a job ID for background processing"""
+    project_id = str(uuid.uuid4())
+    
+    with get_db_connection() as conn:
+        try:
+            conn.execute("BEGIN TRANSACTION")
+            conn.execute("""
+                INSERT INTO project (id, topic, job_id, status)
+                VALUES (?, ?, ?, ?)
+            """, (
+                project_id,
+                topic,
+                job_id,
+                status
+            ))
+            conn.commit()
+            return project_id
+        except Exception as e:
+            conn.rollback()
+            raise RuntimeError(f"Failed to create project with job: {str(e)}")
+
+
+def update_project_status(project_id: str, status: str):
+    """Update the status of a project"""
+    with get_db_connection() as conn:
+        conn.execute("""
+            UPDATE project SET status = ? WHERE id = ?
+        """, (status, project_id))
+        conn.commit()
+
+
+def update_project_completed(project_id: str, report_path: str, graph_json: Dict, 
+                           footnotes: Dict, status: str = 'completed'):
+    """Update a project when its deep research job completes"""
+    with get_db_connection() as conn:
+        try:
+            conn.execute("BEGIN TRANSACTION")
+            conn.execute("""
+                UPDATE project 
+                SET report_path = ?, 
+                    graph_json = ?, 
+                    footnotes_json = ?,
+                    status = ?
+                WHERE id = ?
+            """, (
+                report_path,
+                json.dumps(graph_json),
+                json.dumps(footnotes),
+                status,
+                project_id
+            ))
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            raise RuntimeError(f"Failed to update project: {str(e)}")
+
+
+def check_and_complete_job(project_id: str, job_id: str) -> bool:
+    """
+    Check job status and update project if complete.
+    Returns True if job is complete (either success or failure), False if still processing.
+    """
+    from openai import OpenAI
+    from utils.config import load_api_key, save_project_files
+    from utils.deep_research import extract_graph_and_footnotes
+    
+    api_key = load_api_key()
+    if not api_key:
+        raise ValueError("OpenAI API key not found")
+    
+    client = OpenAI(api_key=api_key)
+    
+    try:
+        # Retrieve job status
+        job = client.responses.retrieve(job_id)
+        
+        if job.status == "completed":
+            print(f"[check_and_complete_job] Job {job_id} completed successfully")
+            
+            # Extract the result
+            content_block = job.output[-1].content[0]
+            if content_block.type != "output_text":
+                raise RuntimeError("Unexpected content block type")
+            
+            # Parse the JSON response
+            try:
+                data = json.loads(content_block.text)
+            except json.JSONDecodeError as e:
+                print(f"[check_and_complete_job] Failed to parse JSON: {e}")
+                update_project_status(project_id, 'failed')
+                return True
+            
+            # Validate and extract components
+            if "resources" in data and "nodes" in data:
+                # New format from DEVELOPER_PROMPT
+                graph = {
+                    "nodes": data["nodes"],
+                    "edges": []  # Build edges from prerequisites
+                }
+                
+                # Build edges from prerequisites
+                for node in data["nodes"]:
+                    if "prerequisites" in node and node["prerequisites"]:
+                        for prereq in node["prerequisites"]:
+                            graph["edges"].append({
+                                "source": prereq,
+                                "target": node["id"],
+                                "confidence": 1.0
+                            })
+                
+                # Create report from resources
+                report_markdown = f"# {get_project(project_id)['topic']}\n\n## Resources\n\n"
+                for resource in data["resources"]:
+                    report_markdown += f"- [{resource['title']}]({resource['url']}) - {resource['scope']}\n"
+                
+                footnotes = {}  # No footnotes in new format
+                
+            else:
+                # Legacy format or missing data
+                report_markdown = data.get("report_markdown", f"# {get_project(project_id)['topic']}")
+                graph = data.get("graph", {"nodes": [], "edges": []})
+                footnotes = data.get("footnotes", {})
+            
+            # Ensure nodes have learning objectives
+            for node in graph["nodes"]:
+                if "learning_objectives" not in node:
+                    # Use objectives field if available (new format)
+                    if "objectives" in node:
+                        node["learning_objectives"] = [{"description": obj} for obj in node["objectives"]]
+                    else:
+                        # Generate defaults
+                        node["learning_objectives"] = [
+                            {"description": f"Understand the key concepts of {node.get('label', node.get('title', 'this topic'))}"},
+                            {"description": f"Apply principles in practice"},
+                            {"description": f"Analyze relationships with related topics"},
+                            {"description": f"Evaluate different approaches"},
+                            {"description": f"Create solutions using this knowledge"}
+                        ]
+            
+            # Save files
+            report_path = save_project_files(
+                project_id,
+                report_markdown,
+                graph,
+                {"resources": data.get("resources", []), "raw_response": data}
+            )
+            
+            # Update project with results
+            update_project_completed(
+                project_id,
+                report_path=report_path,
+                graph_json=graph,
+                footnotes=footnotes,
+                status='completed'
+            )
+            
+            # Save graph to database
+            save_graph_to_db(project_id, graph)
+            
+            print(f"[check_and_complete_job] Project {project_id} updated successfully")
+            return True
+            
+        elif job.status == "failed":
+            print(f"[check_and_complete_job] Job {job_id} failed")
+            update_project_status(project_id, 'failed')
+            return True
+            
+        elif job.status == "cancelled":
+            print(f"[check_and_complete_job] Job {job_id} was cancelled")
+            update_project_status(project_id, 'failed')
+            return True
+            
+        else:
+            # Still processing
+            print(f"[check_and_complete_job] Job {job_id} still processing (status: {job.status})")
+            return False
+            
+    except Exception as e:
+        print(f"[check_and_complete_job] Error checking job: {e}")
+        # Don't mark as failed on transient errors
+        return False
+
+
 def save_graph_to_db(project_id: str, graph_data: Dict[str, Any]):
     """Save graph nodes and edges to database"""
     with get_db_connection() as conn:
@@ -277,12 +461,21 @@ def get_project(project_id: str) -> Optional[Dict]:
     """Get project details by ID"""
     with get_db_connection() as conn:
         cursor = conn.execute(
-            "SELECT * FROM project WHERE id = ?", 
+            "SELECT id, topic, report_path, graph_json, footnotes_json, created_at, job_id, status FROM project WHERE id = ?", 
             (project_id,)
         )
         row = cursor.fetchone()
         if row:
-            return dict(row)
+            return {
+                "id": row[0],
+                "topic": row[1],
+                "report_path": row[2],
+                "graph_json": row[3],
+                "footnotes_json": row[4],
+                "created_at": row[5],
+                "job_id": row[6],
+                "status": row[7] or 'completed'  # Default for old projects
+            }
     return None
 
 
@@ -351,6 +544,7 @@ def get_all_projects() -> List[Dict[str, Any]]:
                 p.id,
                 p.topic,
                 p.created_at,
+                p.status,
                 COUNT(DISTINCT n.id) as total_nodes,
                 COUNT(DISTINCT CASE WHEN n.mastery >= 0.7 THEN n.id END) as mastered_nodes,
                 ROUND(AVG(n.mastery) * 100) as progress
@@ -365,9 +559,10 @@ def get_all_projects() -> List[Dict[str, Any]]:
                 "id": row[0],
                 "topic": row[1],
                 "created_at": row[2],
-                "total_nodes": row[3],
-                "mastered_nodes": row[4],
-                "progress": int(row[5] or 0)
+                "status": row[3] or 'completed',  # Default to completed for old projects
+                "total_nodes": row[4],
+                "mastered_nodes": row[5],
+                "progress": int(row[6] or 0)
             }
             for row in cursor.fetchall()
         ]

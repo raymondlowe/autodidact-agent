@@ -334,3 +334,80 @@ def run_deep_research_job(topic: str, hours: Optional[int] = None) -> Dict:
     except Exception as e:
         print(f"[run_deep_research_job] ERROR: {type(e).__name__}: {str(e)}")
         raise RuntimeError(f"Deep Research failed: {str(e)}") 
+
+
+def start_deep_research_job(topic: str, hours: Optional[int] = None) -> str:
+    """
+    Start a deep research job and return the job_id immediately.
+    The job will run in the background on OpenAI's servers.
+    
+    Args:
+        topic: The learning topic (already refined/rewritten)
+        hours: Optional number of hours the user wants to invest
+        
+    Returns:
+        str: The job ID for polling
+    """
+    print(f"\n[start_deep_research_job] Starting job for topic: '{topic}'")
+    if hours:
+        print(f"[start_deep_research_job] Hours: {hours}")
+    
+    # Get API key and create client
+    api_key = load_api_key()
+    if not api_key:
+        raise ValueError("OpenAI API key not found. Please configure your API key.")
+    
+    client = OpenAI(api_key=api_key)
+    
+    try:
+        # Import the DEVELOPER_PROMPT and model from deep_research module
+        from utils.deep_research import DEVELOPER_PROMPT, DEEP_RESEARCH_MODEL
+        
+        # Prepare the user message with optional hours
+        user_message = f"Topic: {topic}"
+        if hours:
+            user_message += f"\nTarget study time: {hours} hours"
+            target_nodes = min(max(hours * 2, 4), 40)
+            user_message += f"\nTarget node count ≈ {target_nodes} (keep between {target_nodes - 2} and {target_nodes + 2})."
+        user_message += "\nPlease follow the developer instructions."
+        
+        print(f"[start_deep_research_job] User message: {user_message}")
+        
+        # Build input messages
+        input_messages = [
+            {
+                "role": "developer",
+                "content": [{"type": "input_text", "text": DEVELOPER_PROMPT}]
+            },
+            {
+                "role": "user",
+                "content": [{"type": "input_text", "text": user_message}]
+            }
+        ]
+
+        # Tools configuration
+        tools = [{"type": "web_search_preview"}]
+        
+        print("[start_deep_research_job] Submitting deep-research job...")
+        resp = client.responses.create(
+            model=DEEP_RESEARCH_MODEL,
+            background=True,
+            input=input_messages,
+            tools=tools,
+            reasoning={"summary": "auto"},
+        )
+        
+        job_id = resp.id
+        print(f"[start_deep_research_job] Job submitted successfully with ID: {job_id}")
+        
+        return job_id
+        
+    except openai.AuthenticationError:
+        print("[start_deep_research_job] ERROR: Authentication failed")
+        raise RuntimeError("Invalid API key. Please check your OpenAI API key.")
+    except openai.PermissionDeniedError:
+        print("[start_deep_research_job] ERROR: Permission denied")
+        raise RuntimeError("API key doesn't have access to Deep Research model.")
+    except Exception as e:
+        print(f"[start_deep_research_job] ERROR: {type(e).__name__}: {str(e)}")
+        raise RuntimeError(f"Failed to start Deep Research job: {str(e)}") 

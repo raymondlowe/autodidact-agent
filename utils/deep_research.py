@@ -12,18 +12,16 @@ from utils.config import DEEP_RESEARCH_MODEL, DEEP_RESEARCH_POLL_INTERVAL
 
 # After we get the user's topic & time investment preferences, this prompt is used to ask clarifying questions to the user
 TOPIC_CLARIFYING_PROMPT = """
-You will be given a short topic that a user wants to learn alongside the time they want to invest. Your job is NOT to answer it or complete the task, but instead to ask clarifying questions that would help you or another researcher to understand what exactly the user wants to learn.
+You will be given a short topic that a user wants to learn alongside the time they want to invest. Your job is NOT to answer it or complete the task, but instead to ask clarifying questions that would help a syllabus planner to understand what exactly the user wants to learn.
 
 GUIDELINES:
 1. **Focus on Learning Scope & Learner Profile**
-- Ask what *specific aspect* of the topic interests them (breadth vs. depth, technical vs. conceptual).  
-- Ask about their **background knowledge** (novice, hobbyist, intermediate, expert).  
-- Ask their **preferred learning outcomes** (e.g., “explain to a peer”, “implement a demo”, “pass an exam”).
-- Consider what information would change the structure, depth, or direction for the specialized learning plan.
-- Ask about each one *explicitly*, even if it feels obvious or typical.
+- Consider what information would change the structure, depth, or direction for the specialized learning plan, and ask questions to clarify.
+  - For example, you might want to ask questions to clarify what aspects of the topic the user is interested in, what if any background knowledge they have, their purpose for learning, etc.
+- things to avoid asking about: preferred learning method or media formats (since our system will be chat-bot driven)
 
 2. **Do Not Invent Preferences**
-- If the user did not mention a preference, *do not assume it*. Ask about it clearly and neutrally.
+- If the user did not mention a preference, *do not assume it*. Ask about it clearly and neutrally. When giving options, they should be relevant to the subject matter.
 
 3. **Use the First Person**
 - Phrase your questions from the perspective of the assistant or researcher talking to the user (e.g., “Could you clarify...” or “Do you have a preference for...”)
@@ -32,12 +30,9 @@ GUIDELINES:
 - If there are multiple open questions, list them clearly in bullet format for readability.
 
 5. **Avoid Overasking**
-- Prioritize the 3–6 questions that would most reduce ambiguity or scope creep. You don’t need to ask *everything*, just the most pivotal unknowns.
+- Prioritize the 4-6 questions that would most reduce ambiguity or scope creep. You don’t need to ask *everything*, just the most pivotal unknowns.
 
-6. **Include Examples Where Helpful**
-- If asking about preferences, briefly list examples to help the user answer. For e.g. media formats they prefer could be textbook chapters, videos, blogposts, etc.
-
-7. **Format for Conversational Use**
+6. **Format for Conversational Use**
 - The output should sound helpful and conversational—not like a form. Aim for a natural tone while still being precise.
 """
 
@@ -51,12 +46,12 @@ GUIDELINES:
 - Include all known user preferences and explicitly list key attributes or dimensions to consider.
 - It is of utmost importance that all details from the user are included in the instructions.
 
-2. **Fill in Unstated But Necessary Dimensions as Open-Ended**
-- If certain attributes are essential for a meaningful output but the user has not provided them, explicitly state that they are open-ended or default to no specific constraint.
-
-3. **Avoid Unwarranted Assumptions**
+2. **Avoid Unwarranted Assumptions**
 - If the user has not provided a particular detail, do not invent one.
-- Instead, state the lack of specification and guide the researcher to treat it as flexible or accept all possible options.
+- Instead, state the lack of specification and guide the planner to treat it as flexible or accept all possible options.
+
+3. **Important details first**
+- The first sentence should contain be a complete sentence saying what the user wants to learn, and further sentences should flesh all relevant details out.
 
 4. **Use the First Person**
 - Phrase the request from the perspective of the user.
