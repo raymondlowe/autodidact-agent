@@ -50,7 +50,7 @@ def retry_with_o3(st, project):
 
     model_to_use_now = "o3"
 
-    new_job_id = start_deep_research_job(project['topic'], hours, combined_text, )
+    new_job_id = start_deep_research_job(project['topic'], hours, combined_text, model_to_use_now)
     print(f"[project_detail.py] New Job ID: {new_job_id}")
     update_project_with_job(
                 project_id=project_id,
