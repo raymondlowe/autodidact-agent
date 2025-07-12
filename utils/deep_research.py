@@ -62,37 +62,54 @@ GUIDELINES:
 
 # Updated developer prompt to include learning objectives
 DEVELOPER_PROMPT = """
-You are a “Deep-Research Curriculum Architect” with the goal of making the optimal learning syllabus for motivated autodidacts  on the topic user asks of you
+You are a “Deep-Research Curriculum Architect” with the goal of making the optimal learning syllabus for motivated autodidacts on the topic user asks of you.
 
-TASK 1 – RESOURCES  
-• Identify 10–15 authoritative, learner-friendly resources suitable for motivated autodidacts on the specified topic.
-• Return them as a JSON array **resources** with:  
-  { "rid", "title", "type", "url", "date", "scope" }  
-  – type ∈ {book | paper | video | interactive | article}.  
-  – scope = one-sentence summary.
-
-TASK 2 – GRAPH  
-• Build a directed-acyclic knowledge graph with **≈ 2 nodes for every hour of study time stated by the user (minimum 8, maximum 40), ±2 nodes allowed**.  
-• Each node must be teachable in ~30 min (split >45 min concepts, merge <15 min).  
-• Node schema:  
+TASK 1 - RESOURCES
+- You will be given a topic and a time investment preference.
+- Identify 10-15 authoritative, learner-friendly resources suitable for motivated autodidacts on the specified topic.
+- Return them as a JSON array **resources** with:
+  { "rid", "title", "type", "url", "date", "scope" }
+  - type ∈ {book | paper | video | interactive | article}.
+  - scope = one-sentence summary.
+- An example resource:
   {
-    "id": "kebab-case",                  // unique  
-    "title": "human-readable",  
-    "prerequisites": ["id1","id2","id3"],// ≤3; omit if none  
-    "objectives": [                      // 5–7, Bloom verbs, ≤12 words
-      "Explain …", "Calculate …"
+    "rid": "bitcoin_whitepaper",
+    "title": "Bitcoin: A Peer-to-Peer Electronic Cash System (Whitepaper)",
+    "type": "paper",
+    "url": "https://bitcoin.org/bitcoin.pdf",
+    "date": "2008-10-31",
+    "scope": "Original whitepaper by Satoshi Nakamoto introducing Bitcoin's design and goals."
+  }
+
+TASK 2 - GRAPH
+- Decompose the topic into into the number of learning "nodes" specified in the user input. Nodes should build on each other and each should be scoped to ~30 minutes of focused study.
+- Each node should have a "title" and a list of 5-7 "learning_objectives", which detail what the user will learn in this node. Use Bloom verbs, <=12 words for each.
+- Each non-root node has 1-3 "prerequisite_node_ids", each of which are ids for nodes in the graph (other nodes one should learn before this)
+- The "prerequisite_node_ids" are what define the edges of the graph, which should be a directed acyclic knowledge graph.
+  - Avoid isolated nodes or overly linear chains. The graph should feel like a branching river, not a single track or scattered islands.
+  - Aim for ≥ 10% roots (no prerequisites) and ≥15% leaves (no dependants)
+  - Every prerequisite_node_id **must exactly match an “id” for a node that appears in this JSON**
+  - The graph should support multiple learning paths. At most steps, the user should have 2–4 valid “next” nodes they can choose from. Paths may diverge and later converge.
+- A node should have "resource_pointers" to sections of resources. Use only "rid" values present in **resources**. Omit if no specific section of a resource maps well to the node
+- An example node for clarifying schema:
+  {
+    "id": "bitcoin-consensus-mechanism",                  // unique  
+    "title": "Consensus Mechanisms in Bitcoin",  
+    "prerequisite_node_ids": ["bitcoin-whitepaper-intro", "distributed-systems-basics"],
+    "learning_objectives": [             
+      "Explain the role of proof-of-work in consensus",
+      "Calculate the difficulty adjustment formula",
+      "Describe the impact of mining pools", 
     ],
-    "sections": [                        // pointers into resources
-      { "rid": "mastering_bitcoin_2e", "loc": "Ch.8 §Difficulty" }
+    "resource_pointers": [                        // pointers into resources
+      { "rid": "mastering_bitcoin_2e", "section": "Ch.8 §Difficulty" },
+      { "rid": "bitcoin_whitepaper", "section": "4. Proof-of-Work" }
     ]
   }
 
-HARD CONSTRAINTS  
-• Graph acyclic; ≥10 % roots (no prerequisites) and ≥15 % leaves (no dependants).  
-• Every prerequisite **must exactly match an “id” that appears in this JSON**.  
-• Use only `rid` values present in **resources**.  
-• Return **one valid JSON object** with keys `"resources"` and `"nodes"`.  
-• Any non-JSON text will be discarded.
+TASK 3 - CONSOLIDATE AND RETURN FINAL VALID JSON
+- Return **one valid JSON object** with keys `"resources"` and `"nodes"`.  
+- Any non-JSON text will be discarded.
 """
 
 
@@ -128,16 +145,16 @@ SCHEMA = {
       "type":"array",
       "items":{
         "type":"object",
-        "required":["id","title","objectives"],
+        "required":["id","title","learning_objectives"],
         "properties":{
           "id":{"type":"string"},
           "title":{"type":"string"},
-          "prerequisites":{"type":"array","items":{"type":"string"}},
-          "objectives":{"type":"array","minItems":5,"maxItems":7},
-          "sections":{"type":"array",
+          "prerequisite_node_ids":{"type":"array","items":{"type":"string"}},
+          "learning_objectives":{"type":"array","minItems":3,"maxItems":9},
+          "resource_pointers":{"type":"array",
               "items":{"type":"object",
-                       "required":["rid","loc"],
-                       "properties":{"rid":{"type":"string"},"loc":{"type":"string"}}}
+                       "required":["rid","section"],
+                       "properties":{"rid":{"type":"string"},"section":{"type":"string"}}}
           }
         }
       }
@@ -162,16 +179,16 @@ def lint(payload:str)->list[str]:
     rid_set={r["rid"] for r in data["resources"]}
     # dangling prereqs
     for n in data["nodes"]:
-        for p in n.get("prerequisites",[]):
+        for p in n.get("prerequisite_node_ids",[]):
             if p not in node_ids:
                 errors.append(f"Node '{n['id']}' has unknown prerequisite '{p}'")
     # dangling rid refs
     for n in data["nodes"]:
-        for s in n.get("sections",[]):
+        for s in n.get("resource_pointers",[]):
             if s["rid"] not in rid_set:
                 errors.append(f"Node '{n['id']}' references unknown rid '{s['rid']}'")
     # cycles
-    g=nx.DiGraph([(p,n["id"]) for n in data["nodes"] for p in n.get("prerequisites",[])])
+    g=nx.DiGraph([(p,n["id"]) for n in data["nodes"] for p in n.get("prerequisite_node_ids",[])])
     try:
         nx.find_cycle(g,orientation="original")
         errors.append("Graph contains a prerequisite cycle")
@@ -342,7 +359,7 @@ test_data = """
     {
       "id": "bitcoin-origins-whitepaper",
       "title": "Bitcoin Origins & Whitepaper Fundamentals",
-      "objectives": [
+      "learning_objectives": [
         "Describe problems Bitcoin set out to solve",
         "Summarize whitepaper\u2019s peer-to-peer model",
         "Explain role of proof-of-work in consensus",
@@ -350,44 +367,24 @@ test_data = """
         "Contrast Bitcoin with earlier e-cash attempts",
         "Define key terms: block, hash, timestamp"
       ],
-      "sections": [
+      "resource_pointers": [
         {
           "rid": "bitcoin_whitepaper",
-          "loc": "\u00a71\u2013\u00a76"
+          "section": "\u00a71\u2013\u00a76"
         },
         {
           "rid": "digital_gold",
-          "loc": "Ch.1 \u2018Genesis\u2019"
-        }
-      ],
-      "learning_objectives": [
-        {
-          "description": "Describe problems Bitcoin set out to solve"
-        },
-        {
-          "description": "Summarize whitepaper\u2019s peer-to-peer model"
-        },
-        {
-          "description": "Explain role of proof-of-work in consensus"
-        },
-        {
-          "description": "Identify genesis block and first 50 BTC"
-        },
-        {
-          "description": "Contrast Bitcoin with earlier e-cash attempts"
-        },
-        {
-          "description": "Define key terms: block, hash, timestamp"
+          "section": "Ch.1 \u2018Genesis\u2019"
         }
       ]
     },
     {
       "id": "early-adoption-2010-2014",
       "title": "Early Adoption & Milestones (2010-2014)",
-      "prerequisites": [
+      "prerequisite_node_ids": [
         "bitcoin-origins-whitepaper"
       ],
-      "objectives": [
+      "learning_objectives": [
         "Recall first Bitcoin transaction and Pizza Day",
         "Discuss Mt. Gox and Silk Road impacts",
         "Outline emergence of exchanges and wallets",
@@ -395,44 +392,24 @@ test_data = """
         "Assess community growth metrics by 2014",
         "Describe media perception in early years"
       ],
-      "sections": [
+      "resource_pointers": [
         {
           "rid": "digital_gold",
-          "loc": "Ch.6 \u2018Gox Rising\u2019"
+          "section": "Ch.6 \u2018Gox Rising\u2019"
         },
         {
           "rid": "reuters_ath_2025",
-          "loc": "Timeline 2009-14 inset"
-        }
-      ],
-      "learning_objectives": [
-        {
-          "description": "Recall first Bitcoin transaction and Pizza Day"
-        },
-        {
-          "description": "Discuss Mt. Gox and Silk Road impacts"
-        },
-        {
-          "description": "Outline emergence of exchanges and wallets"
-        },
-        {
-          "description": "Explain regulatory firsts (FinCEN 2013)"
-        },
-        {
-          "description": "Assess community growth metrics by 2014"
-        },
-        {
-          "description": "Describe media perception in early years"
+          "section": "Timeline 2009-14 inset"
         }
       ]
     },
     {
       "id": "supply-halving-mechanics",
       "title": "Bitcoin Supply, Halvings & Monetary Policy",
-      "prerequisites": [
+      "prerequisite_node_ids": [
         "bitcoin-origins-whitepaper"
       ],
-      "objectives": [
+      "learning_objectives": [
         "Explain 21 million cap and issuance schedule",
         "Calculate block reward changes after halvings",
         "Interpret miner incentives and difficulty",
@@ -440,87 +417,50 @@ test_data = """
         "Compare inflation rates pre- and post-2024 halving",
         "Analyze supply-active metrics from on-chain data"
       ],
-      "sections": [
+      "resource_pointers": [
         {
           "rid": "mastering_bitcoin_2e",
-          "loc": "Ch.8 \u00a7Difficulty & Halving"
+          "section": "Ch.8 \u00a7Difficulty & Halving"
         },
         {
           "rid": "bitcoin_standard",
-          "loc": "Ch.8 \u2018Sound Money\u2019"
+          "section": "Ch.8 \u2018Sound Money\u2019"
         },
         {
           "rid": "vaneck_chaincheck",
-          "loc": "Supply tables"
-        }
-      ],
-      "learning_objectives": [
-        {
-          "description": "Explain 21 million cap and issuance schedule"
-        },
-        {
-          "description": "Calculate block reward changes after halvings"
-        },
-        {
-          "description": "Interpret miner incentives and difficulty"
-        },
-        {
-          "description": "Relate scarcity narrative to store-of-value"
-        },
-        {
-          "description": "Compare inflation rates pre- and post-2024 halving"
-        },
-        {
-          "description": "Analyze supply-active metrics from on-chain data"
+          "section": "Supply tables"
         }
       ]
     },
     {
       "id": "major-price-milestones",
       "title": "Major Price Milestones & Market Catalysts",
-      "prerequisites": [
+      "prerequisite_node_ids": [
         "early-adoption-2010-2014",
         "supply-halving-mechanics"
       ],
-      "objectives": [
+      "learning_objectives": [
         "Chart BTC price from $0.01 to $116k",
         "Correlate halvings with bull cycles",
         "Identify ETF approvals and policy impacts",
         "Evaluate institutional FOMO narratives",
         "Discuss volatility and drawdown patterns"
       ],
-      "sections": [
+      "resource_pointers": [
         {
           "rid": "reuters_ath_2025",
-          "loc": "All-time-high report"
-        }
-      ],
-      "learning_objectives": [
-        {
-          "description": "Chart BTC price from $0.01 to $116k"
-        },
-        {
-          "description": "Correlate halvings with bull cycles"
-        },
-        {
-          "description": "Identify ETF approvals and policy impacts"
-        },
-        {
-          "description": "Evaluate institutional FOMO narratives"
-        },
-        {
-          "description": "Discuss volatility and drawdown patterns"
+          "section": "All-time-high report"
         }
       ]
     },
     {
       "id": "address-distribution-basics",
       "title": "Address Structure & Ownership Distribution",
-      "prerequisites": [
+      "prerequisite_node_ids": [
         "bitcoin-origins-whitepaper",
         "supply-halving-mechanics"
       ],
-      "objectives": [
+      "learning_objectives": [
         "Differentiate address vs. wallet concepts",
         "Navigate public ledger to trace balances",
         "Summarize Glassnode long-/short-term holders",
@@ -528,44 +468,24 @@ test_data = """
         "Discuss privacy limits of pseudonymity",
         "Interpret distribution charts by size"
       ],
-      "sections": [
+      "resource_pointers": [
         {
           "rid": "forbes_bitcoin_intro",
-          "loc": "\u2018Public Ledger\u2019 section"
+          "section": "\u2018Public Ledger\u2019 section"
         },
         {
           "rid": "bitinfo_rich_list",
-          "loc": "Distribution pie chart"
-        }
-      ],
-      "learning_objectives": [
-        {
-          "description": "Differentiate address vs. wallet concepts"
-        },
-        {
-          "description": "Navigate public ledger to trace balances"
-        },
-        {
-          "description": "Summarize Glassnode long-/short-term holders"
-        },
-        {
-          "description": "Calculate % supply on exchanges"
-        },
-        {
-          "description": "Discuss privacy limits of pseudonymity"
-        },
-        {
-          "description": "Interpret distribution charts by size"
+            "section": "Distribution pie chart"
         }
       ]
     },
     {
       "id": "major-whales-and-wallets",
       "title": "Satoshi & Other Major Whales",
-      "prerequisites": [
+      "prerequisite_node_ids": [
         "address-distribution-basics"
       ],
-      "objectives": [
+      "learning_objectives": [
         "Estimate Satoshi\u2019s dormant holdings",
         "Rank top exchange-controlled wallets",
         "Differentiate custodian vs. proprietary funds",
@@ -573,44 +493,24 @@ test_data = """
         "Explain proof-of-reserves concepts",
         "Evaluate risks of concentrated ownership"
       ],
-      "sections": [
+      "resource_pointers": [
         {
           "rid": "ledger_most_btc",
-          "loc": "\u2018Top Bitcoin Holders\u2019"
+          "section": "\u2018Top Bitcoin Holders\u2019"
         },
         {
           "rid": "bitinfo_rich_list",
-          "loc": "Top 10 addresses table"
-        }
-      ],
-      "learning_objectives": [
-        {
-          "description": "Estimate Satoshi\u2019s dormant holdings"
-        },
-        {
-          "description": "Rank top exchange-controlled wallets"
-        },
-        {
-          "description": "Differentiate custodian vs. proprietary funds"
-        },
-        {
-          "description": "Assess whale influence on liquidity"
-        },
-        {
-          "description": "Explain proof-of-reserves concepts"
-        },
-        {
-          "description": "Evaluate risks of concentrated ownership"
+          "section": "Top 10 addresses table"
         }
       ]
     },
     {
       "id": "corporate-bitcoin-treasuries",
       "title": "Corporate & ETF Bitcoin Treasuries",
-      "prerequisites": [
+      "prerequisite_node_ids": [
         "major-whales-and-wallets"
       ],
-      "objectives": [
+      "learning_objectives": [
         "Identify leading public-company BTC holders",
         "Compare MicroStrategy vs. ETFs like IBIT",
         "Analyze balance-sheet motivations",
@@ -618,40 +518,20 @@ test_data = """
         "Discuss accounting and regulatory factors",
         "Summarize 2025 surge in corporate adoption"
       ],
-      "sections": [
+      "resource_pointers": [
         {
           "rid": "btc_treasuries",
-          "loc": "Top 10 companies table"
-        }
-      ],
-      "learning_objectives": [
-        {
-          "description": "Identify leading public-company BTC holders"
-        },
-        {
-          "description": "Compare MicroStrategy vs. ETFs like IBIT"
-        },
-        {
-          "description": "Analyze balance-sheet motivations"
-        },
-        {
-          "description": "Calculate treasury % of circulating supply"
-        },
-        {
-          "description": "Discuss accounting and regulatory factors"
-        },
-        {
-          "description": "Summarize 2025 surge in corporate adoption"
+          "section": "Top 10 companies table"
         }
       ]
     },
     {
       "id": "government-bitcoin-holdings",
       "title": "Government Bitcoin Reserves & Seizures",
-      "prerequisites": [
+      "prerequisite_node_ids": [
         "corporate-bitcoin-treasuries"
       ],
-      "objectives": [
+      "learning_objectives": [
         "List nations publicly holding BTC",
         "Explain U.S. strategic reserve policy",
         "Quantify estimated 200k BTC U.S. holdings",
@@ -659,41 +539,21 @@ test_data = """
         "Debate geopolitical implications of state BTC",
         "Assess transparency challenges in sovereign wallets"
       ],
-      "sections": [
+      "resource_pointers": [
         {
           "rid": "whitehouse_btc_reserve",
-          "loc": "Sec.1-4"
+          "section": "Sec.1-4"
         },
         {
           "rid": "ledger_most_btc",
-          "loc": "\u2018What Country Owns the Most Bitcoin?\u2019"
+          "section": "\u2018What Country Owns the Most Bitcoin?\u2019"
         }
       ],
-      "learning_objectives": [
-        {
-          "description": "List nations publicly holding BTC"
-        },
-        {
-          "description": "Explain U.S. strategic reserve policy"
-        },
-        {
-          "description": "Quantify estimated 200k BTC U.S. holdings"
-        },
-        {
-          "description": "Contrast seizure-based vs. purchase-based reserves"
-        },
-        {
-          "description": "Debate geopolitical implications of state BTC"
-        },
-        {
-          "description": "Assess transparency challenges in sovereign wallets"
-        }
-      ]
     },
     {
       "id": "onchain-analysis-tools",
       "title": "Hands-On: Using On-Chain Analysis Tools",
-      "objectives": [
+      "learning_objectives": [
         "Use block explorers to trace transactions",
         "Query rich-list and supply dashboards",
         "Visualize dormancy and HODL waves",
@@ -701,45 +561,25 @@ test_data = """
         "Apply hash-rate and difficulty charts",
         "Interpret data limitations and biases"
       ],
-      "sections": [
+      "resource_pointers": [
         {
           "rid": "3b1b_bitcoin_video",
-          "loc": "\u2018Creating a Blockchain\u2019 segment"
+          "section": "\u2018Creating a Blockchain\u2019 segment"
         },
         {
           "rid": "bitinfo_rich_list",
-          "loc": "Explorer UI"
+          "section": "Explorer UI"
         }
       ],
-      "learning_objectives": [
-        {
-          "description": "Use block explorers to trace transactions"
-        },
-        {
-          "description": "Query rich-list and supply dashboards"
-        },
-        {
-          "description": "Visualize dormancy and HODL waves"
-        },
-        {
-          "description": "Verify exchange proof-of-reserves claims"
-        },
-        {
-          "description": "Apply hash-rate and difficulty charts"
-        },
-        {
-          "description": "Interpret data limitations and biases"
-        }
-      ]
     },
     {
       "id": "interpreting-ownership-landscape",
       "title": "Interpreting the 2025 Ownership Landscape",
-      "prerequisites": [
+      "prerequisite_node_ids": [
         "address-distribution-basics",
         "onchain-analysis-tools"
       ],
-      "objectives": [
+      "learning_objectives": [
         "Synthesize data from whales, corporates, governments",
         "Evaluate concentration vs. decentralization trends",
         "Estimate long-term vs. short-term holder ratios",
@@ -747,36 +587,16 @@ test_data = """
         "Debate future scenarios for BTC distribution",
         "Formulate personal risk assessment strategies"
       ],
-      "sections": [
+      "resource_pointers": [
         {
           "rid": "vaneck_chaincheck",
-          "loc": "Holder composition metrics"
+          "section": "Holder composition metrics"
         },
         {
           "rid": "ledger_most_btc",
-          "loc": "Summary conclusions"
+          "section": "Summary conclusions"
         }
       ],
-      "learning_objectives": [
-        {
-          "description": "Synthesize data from whales, corporates, governments"
-        },
-        {
-          "description": "Evaluate concentration vs. decentralization trends"
-        },
-        {
-          "description": "Estimate long-term vs. short-term holder ratios"
-        },
-        {
-          "description": "Forecast impact of ETF growth on ownership"
-        },
-        {
-          "description": "Debate future scenarios for BTC distribution"
-        },
-        {
-          "description": "Formulate personal risk assessment strategies"
-        }
-      ]
     }
   ]
 }

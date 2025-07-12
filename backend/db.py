@@ -189,9 +189,11 @@ def update_project_status(project_id: str, status: str):
         conn.commit()
 
 
-def update_project_completed(project_id: str, report_path: str, 
-                           resources: List[Dict], status: str = 'completed'):
-    """Update a project when its deep research job completes"""
+def update_project_completed_and_save_graph_to_db(project_id: str, report_path: str, 
+                           resources: List[Dict], graph_data: Dict[str, Any], status: str = 'completed'):
+    """Update a project when its deep research job completes
+    Also save graph nodes, edges, and learning_objectives to their respective db tables
+    """
     with get_db_connection() as conn:
         try:
             conn.execute("BEGIN TRANSACTION")
@@ -207,6 +209,32 @@ def update_project_completed(project_id: str, report_path: str,
                 status,
                 project_id
             ))
+
+            # Create nodes
+            for node in graph_data['nodes']:
+                node_id = str(uuid.uuid4())
+                conn.execute("""
+                    INSERT INTO node (id, project_id, original_id, label, summary, references_sections_json)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (node_id, project_id, node['id'], node['title'], node.get('summary', ''), json.dumps(node.get('resource_pointers', []))))
+
+                # Save learning objectives
+                for idx, lo in enumerate(node.get('learning_objectives', [])):
+                    print(f"[update_project_completed_and_save_graph_to_db] Saving learning objective: {lo}")
+                    conn.execute("""
+                        INSERT INTO learning_objective (id, project_id, node_id, idx_in_node, description)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (str(uuid.uuid4()), project_id, node_id, idx, lo['description']))
+            
+            # Create edges
+            for edge in graph_data['edges']:
+                conn.execute("""
+                    INSERT INTO edge (source, target, project_id, confidence, rationale)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (edge['source'], edge['target'], project_id, 
+                    edge.get('confidence', 1.0), edge.get('rationale', '')))
+                
+            # after all above have been done, commit the transaction
             conn.commit()
         except Exception as e:
             conn.rollback()
@@ -261,13 +289,13 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
                 resources = data["resources"]
                 graph = {
                     "nodes": data["nodes"],
-                    "edges": []  # Build edges from prerequisites
+                    "edges": []  # we will later build edges from prerequisite_node_ids
                 }
                 
-                # Build edges from prerequisites
+                # Build edges from prerequisite_node_ids
                 for node in data["nodes"]:
-                    if "prerequisites" in node and node["prerequisites"]:
-                        for prereq in node["prerequisites"]:
+                    if "prerequisite_node_ids" in node and node["prerequisite_node_ids"]:
+                        for prereq in node["prerequisite_node_ids"]:
                             graph["edges"].append({
                                 "source": prereq,
                                 "target": node["id"],
@@ -286,21 +314,23 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
                 update_project_status(project_id, 'failed')
                 return True
 
-            # Ensure nodes have learning objectives
+            # Ensure nodes have properly structured learning_objectives 
+            # (until this point, learning_objectives is a list of strings, now its a list of dicts with a "description" key)
             for node in graph["nodes"]:
-                if "learning_objectives" not in node:
-                    # Use objectives field if available (new format)
-                    if "objectives" in node:
-                        node["learning_objectives"] = [{"description": obj} for obj in node["objectives"]]
-                    else:
-                        # Generate defaults
-                        node["learning_objectives"] = [
-                            {"description": f"Understand the key concepts of {node.get('label', node.get('title', 'this topic'))}"},
-                            {"description": f"Apply principles in practice"},
-                            {"description": f"Analyze relationships with related topics"},
-                            {"description": f"Evaluate different approaches"},
-                            {"description": f"Create solutions using this knowledge"}
-                        ]
+                if "learning_objectives" in node:
+                    node["learning_objectives"] = [{"description": obj} for obj in node["learning_objectives"]]
+                elif "objectives" in node:
+                    # old syntax
+                    node["learning_objectives"] = [{"description": obj} for obj in node["objectives"]]
+                else:
+                    # Generate defaults. Not sure if this is even hit tbh
+                    node["learning_objectives"] = [
+                        {"description": f"Understand the key concepts of {node.get('label', node.get('title', 'this topic'))}"},
+                        {"description": f"Apply principles in practice"},
+                        {"description": f"Analyze relationships with related topics"},
+                        {"description": f"Evaluate different approaches"},
+                        {"description": f"Create solutions using this knowledge"}
+                    ]
             
             # Save files
             report_path = save_project_files(
@@ -310,16 +340,15 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
                 data
             )
             
-            # Update project with results
-            update_project_completed(
+            # Update project to mark it as completed.
+            # also Save graph nodes, edges, and learning_objectives to their respective db tables
+            update_project_completed_and_save_graph_to_db(
                 project_id,
                 report_path=report_path,
                 resources=resources,
+                graph_data=graph,
                 status='completed'
             )
-            
-            # Save graph nodes and edges to database (we need to store these because this is where progress is tracked)
-            save_graph_to_db(project_id, graph)
             
             print(f"[check_and_complete_job] Project {project_id} updated successfully")
             return True
@@ -367,35 +396,6 @@ def check_job(job_id: str) -> bool:
         print(f"[check_job] Error checking job: {e}")
         # Don't mark as failed on transient errors
         return None
-
-
-def save_graph_to_db(project_id: str, graph_data: Dict[str, Any]):
-    """Save graph nodes and edges to database"""
-    with get_db_connection() as conn:
-        # First, create nodes
-        for node in graph_data['nodes']:
-            node_id = str(uuid.uuid4())
-            conn.execute("""
-                INSERT INTO node (id, project_id, original_id, label, summary, references_sections_json)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (node_id, project_id, node['id'], node['title'], node.get('summary', ''), json.dumps(node.get('sections', []))))
-
-            # Save learning objectives
-            for idx, desc in enumerate(node.get('objectives', [])):
-                conn.execute("""
-                    INSERT INTO learning_objective (id, project_id, node_id, idx_in_node, description)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (str(uuid.uuid4()), project_id, node_id, idx, desc))
-        
-        # Then create edges
-        for edge in graph_data['edges']:
-            conn.execute("""
-                INSERT INTO edge (source, target, project_id, confidence, rationale)
-                VALUES (?, ?, ?, ?, ?)
-            """, (edge['source'], edge['target'], project_id, 
-                 edge.get('confidence', 1.0), edge.get('rationale', '')))
-        
-        conn.commit()
 
 
 def create_session(project_id: str, node_id: str) -> str:
@@ -527,7 +527,7 @@ def get_nodes_for_project(conn, project_id: str) -> List[Dict[str, Any]]:
 
     # for every node, unfurl the `references_sections_json` into a list of sections
     for node in nodes:
-        node['sections'] = json.loads(node['references_sections_json'])
+        node['references_sections'] = json.loads(node['references_sections_json'])
     return nodes
 
 

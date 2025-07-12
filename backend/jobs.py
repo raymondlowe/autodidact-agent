@@ -376,6 +376,7 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
         print(f"[start_deep_research_job] Using model: {research_model}")
         
         # Prepare the user message with optional hours
+        # FIXME: I think it is getting confused between the hours and target_nodes
         user_message = f"Topic: {topic}"
         if hours:
             user_message += f"\n\nTime user wants to invest to study: {hours} hours"

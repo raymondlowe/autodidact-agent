@@ -1,0 +1,1336 @@
+{
+  "resources": [
+    {
+      "rid": "principles_neural_science_6e",
+      "title": "Principles of Neural Science, 6th Edition",
+      "type": "book",
+      "url": "https://www.mheducation.com/highered/product/principles-neural-science-kandel-schwarts-jesell/M9781259642234.html",
+      "date": "2021-03-15",
+      "scope": "Comprehensive reference covering cellular, systems, cognitive, and clinical neuroscience."
+    },
+    {
+      "rid": "neuroscience_purves_7e",
+      "title": "Neuroscience, 7th Edition",
+      "type": "book",
+      "url": "https://sinauer.oup.com/neuroscience7e",
+      "date": "2023-02-10",
+      "scope": "Undergraduate-friendly textbook emphasizing conceptual clarity and visual neuroanatomy."
+    },
+    {
+      "rid": "brain_facts_book",
+      "title": "Brain Facts: A Primer on the Brain and Nervous System (8th ed.)",
+      "type": "article",
+      "url": "https://www.brainfacts.org/the-brain-facts-book",
+      "date": "2024-05-01",
+      "scope": "Society for Neuroscience\u2019s free, illustrated overview of core concepts."
+    },
+    {
+      "rid": "mit_ocw_human_brain",
+      "title": "MIT OpenCourseWare 9.13: The Human Brain",
+      "type": "video",
+      "url": "https://ocw.mit.edu/courses/9-13-the-human-brain-spring-2019/",
+      "date": "2019-05-01",
+      "scope": "Full lecture series blending anatomy, physiology, and cognition with labs."
+    },
+    {
+      "rid": "neurosci_challenged_youtube",
+      "title": "Neuroscientifically Challenged (YouTube Channel)",
+      "type": "video",
+      "url": "https://www.youtube.com/c/NeuroscientificallyChallenged",
+      "date": "ongoing",
+      "scope": "Short, animated videos introducing key brain structures and functions."
+    },
+    {
+      "rid": "coursera_comp_neuro",
+      "title": "Coursera: Computational Neuroscience (U. Washington)",
+      "type": "interactive",
+      "url": "https://www.coursera.org/learn/computational-neuroscience",
+      "date": "2024-10-01",
+      "scope": "Hands-on course modeling neurons, networks, and coding with Python exercises."
+    },
+    {
+      "rid": "allen_brain_atlas",
+      "title": "Allen Brain Atlas \u2013 Interactive Neuroanatomy",
+      "type": "interactive",
+      "url": "https://atlas.brain-map.org/",
+      "date": "ongoing",
+      "scope": "High-resolution, searchable atlas of mouse and human brain structures."
+    },
+    {
+      "rid": "neuron_hh_sim",
+      "title": "Neuron Simulation: Hodgkin-Huxley Interactive Applet",
+      "type": "interactive",
+      "url": "https://neuronaldynamics.epfl.ch/online/Ch2.html",
+      "date": "2020-08-15",
+      "scope": "Browser-based tool to explore membrane potentials and action potentials."
+    },
+    {
+      "rid": "fundamentals_neuropsychology_8e",
+      "title": "Fundamentals of Human Neuropsychology, 8th Edition",
+      "type": "book",
+      "url": "https://www.macmillanlearning.com/college/us/product/Fundamentals-of-Human-Neuropsychology/p/1319243573",
+      "date": "2021-07-20",
+      "scope": "Bridges brain structures to behavior with clinical case studies."
+    },
+    {
+      "rid": "openstax_psych_neuro",
+      "title": "OpenStax Psychology \u2013 Biopsychology Chapters",
+      "type": "article",
+      "url": "https://openstax.org/details/books/psychology-3e",
+      "date": "2023-09-30",
+      "scope": "Free, accessible chapters on neurons, nervous system, and sensation."
+    },
+    {
+      "rid": "nature_neuro_history",
+      "title": "\u201cA Brief History of Neuroscience\u201d (Nature Education)",
+      "type": "article",
+      "url": "https://www.nature.com/scitable/topicpage/a-brief-history-of-neuroscience-14756921/",
+      "date": "2019-06-12",
+      "scope": "Timeline essay tracing discoveries and ethical milestones in brain science."
+    },
+    {
+      "rid": "foundations_neural_development",
+      "title": "Foundations of Neural Development",
+      "type": "book",
+      "url": "https://www.routledge.com/Foundations-of-Neural-Development/Morgan-Carter/p/book/9780367363029",
+      "date": "2020-11-12",
+      "scope": "Introductory text on how the nervous system forms and matures."
+    }
+  ],
+  "nodes": [
+    {
+      "id": "nervous-system-overview",
+      "title": "Overview of the Nervous System",
+      "prerequisite_node_ids": [],
+      "learning_objectives": [
+        {
+          "description": "Differentiate central and peripheral nervous systems"
+        },
+        {
+          "description": "Describe basic sensory-motor information flow"
+        },
+        {
+          "description": "Identify main cell types in nervous tissue"
+        },
+        {
+          "description": "Summarize evolutionary advantages of nervous systems"
+        },
+        {
+          "description": "Define key neuroscience subfields"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "brain_facts_book",
+          "section": "Ch.1 What Is the Nervous System?"
+        },
+        {
+          "rid": "openstax_psych_neuro",
+          "section": "2.1 Overview"
+        }
+      ]
+    },
+    {
+      "id": "neurohistory-ethics",
+      "title": "History & Ethics of Neuroscience",
+      "prerequisite_node_ids": [],
+      "learning_objectives": [
+        {
+          "description": "Outline milestones from Golgi to optogenetics"
+        },
+        {
+          "description": "Discuss famous ethical controversies"
+        },
+        {
+          "description": "Explain principles of human-subject research"
+        },
+        {
+          "description": "Recognize animal welfare regulations"
+        },
+        {
+          "description": "Reflect on neurotechnology societal impacts"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "nature_neuro_history",
+          "section": "full article"
+        },
+        {
+          "rid": "principles_neural_science_6e",
+          "section": "Ch.67 Ethics"
+        }
+      ]
+    },
+    {
+      "id": "neuron-biology-basics",
+      "title": "Neuron Biology Basics",
+      "prerequisite_node_ids": [],
+      "learning_objectives": [
+        {
+          "description": "Label parts of a typical neuron"
+        },
+        {
+          "description": "Contrast neurons and glia"
+        },
+        {
+          "description": "Explain resting membrane potential conceptually"
+        },
+        {
+          "description": "Describe axonal and dendritic transport"
+        },
+        {
+          "description": "Classify neurons by shape and function"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "neuroscience_purves_7e",
+          "section": "Ch.2 Neurons and Glia"
+        },
+        {
+          "rid": "neurosci_challenged_youtube",
+          "section": "Neurons 101 video"
+        }
+      ]
+    },
+    {
+      "id": "brain-regions-map",
+      "title": "Macro-level Brain Regions",
+      "prerequisite_node_ids": [],
+      "learning_objectives": [
+        {
+          "description": "Locate lobes of cerebral cortex"
+        },
+        {
+          "description": "Identify subcortical nuclei basics"
+        },
+        {
+          "description": "Distinguish brainstem divisions"
+        },
+        {
+          "description": "Outline ventricular system path"
+        },
+        {
+          "description": "Navigate anterior\u2013posterior and dorsal\u2013ventral axes"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "mit_ocw_human_brain",
+          "section": "Lecture 1"
+        },
+        {
+          "rid": "allen_brain_atlas",
+          "section": "Human Atlas navigation tutorial"
+        }
+      ]
+    },
+    {
+      "id": "neuronal-membrane-potentials",
+      "title": "Membrane Potentials & Ion Gradients",
+      "prerequisite_node_ids": [
+        "neuron-biology-basics"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Define equilibrium potential using Nernst equation"
+        },
+        {
+          "description": "Calculate resting potential from ion concentrations"
+        },
+        {
+          "description": "Describe role of sodium-potassium pump"
+        },
+        {
+          "description": "Interpret voltage-clamp data basics"
+        },
+        {
+          "description": "Use HH simulation to vary conductances"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "principles_neural_science_6e",
+          "section": "Ch.6 Ionic Basis of Resting Potential"
+        },
+        {
+          "rid": "neuron_hh_sim",
+          "section": "Leak channel exercise"
+        }
+      ]
+    },
+    {
+      "id": "action-potential-mechanics",
+      "title": "Action Potential Generation",
+      "prerequisite_node_ids": [
+        "neuronal-membrane-potentials"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Sequence phases of an action potential"
+        },
+        {
+          "description": "Explain voltage-gated channel kinetics"
+        },
+        {
+          "description": "Relate myelination to conduction velocity"
+        },
+        {
+          "description": "Differentiate absolute and relative refractory periods"
+        },
+        {
+          "description": "Simulate spike trains in HH applet"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "neuron_hh_sim",
+          "section": "Action potential tutorial"
+        },
+        {
+          "rid": "openstax_psych_neuro",
+          "section": "2.2 Neuronal Communication"
+        }
+      ]
+    },
+    {
+      "id": "synaptic-transmission",
+      "title": "Chemical & Electrical Synapses",
+      "prerequisite_node_ids": [
+        "action-potential-mechanics"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Contrast chemical and electrical synapses"
+        },
+        {
+          "description": "Describe neurotransmitter release steps"
+        },
+        {
+          "description": "Interpret EPSP and IPSP recordings"
+        },
+        {
+          "description": "Explain synaptic delay causes"
+        },
+        {
+          "description": "Summarize synaptic plasticity types"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "neuroscience_purves_7e",
+          "section": "Ch.5 Synaptic Transmission"
+        }
+      ]
+    },
+    {
+      "id": "neurotransmitters-overview",
+      "title": "Major Neurotransmitters & Modulators",
+      "prerequisite_node_ids": [
+        "synaptic-transmission"
+      ],
+      "learning_objectives": [
+        {
+          "description": "List classical neurotransmitter families"
+        },
+        {
+          "description": "Differentiate ionotropic vs metabotropic receptors"
+        },
+        {
+          "description": "Map dopamine pathways in brain"
+        },
+        {
+          "description": "Describe acetylcholine role in muscle activation"
+        },
+        {
+          "description": "Relate serotonin to mood regulation"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "brain_facts_book",
+          "section": "Ch.3 Neurotransmitters"
+        }
+      ]
+    },
+    {
+      "id": "glial-cells-functions",
+      "title": "Glial Cells & Support Functions",
+      "prerequisite_node_ids": [
+        "neuron-biology-basics"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Identify astrocyte, oligodendrocyte, microglia roles"
+        },
+        {
+          "description": "Explain myelination process"
+        },
+        {
+          "description": "Discuss blood-brain barrier maintenance"
+        },
+        {
+          "description": "Evaluate glia in synaptic pruning"
+        },
+        {
+          "description": "Outline glial contribution to disease"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "neuroscience_purves_7e",
+          "section": "Ch.2 Glia"
+        }
+      ]
+    },
+    {
+      "id": "neuroanatomical-methods",
+      "title": "Classical Neuroanatomical Methods",
+      "prerequisite_node_ids": [
+        "brain-regions-map"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Describe Nissl and Golgi stains"
+        },
+        {
+          "description": "Explain tract tracing techniques"
+        },
+        {
+          "description": "Interpret histological brain slices"
+        },
+        {
+          "description": "Recognize immunohistochemistry applications"
+        },
+        {
+          "description": "Appraise strengths and limitations"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "principles_neural_science_6e",
+          "section": "Ch.4 Anatomy Methods"
+        }
+      ]
+    },
+    {
+      "id": "neuroimaging-modalities",
+      "title": "Modern Neuroimaging Techniques",
+      "prerequisite_node_ids": [
+        "neuroanatomical-methods"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Compare MRI, fMRI, and DTI principles"
+        },
+        {
+          "description": "Summarize PET neurochemistry imaging"
+        },
+        {
+          "description": "Outline EEG and MEG temporal resolution"
+        },
+        {
+          "description": "Define BOLD signal origin"
+        },
+        {
+          "description": "State common artifacts and corrections"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "mit_ocw_human_brain",
+          "section": "Lecture 6 Imaging"
+        }
+      ]
+    },
+    {
+      "id": "electrophysiology-techniques",
+      "title": "Electrophysiology Methods",
+      "prerequisite_node_ids": [
+        "neuronal-membrane-potentials"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Differentiate intracellular vs extracellular recording"
+        },
+        {
+          "description": "Explain patch-clamp configurations"
+        },
+        {
+          "description": "Describe multiunit spike sorting basics"
+        },
+        {
+          "description": "Assess optrode advantages"
+        },
+        {
+          "description": "Relate LFPs to population activity"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "principles_neural_science_6e",
+          "section": "Ch.5 Recording Techniques"
+        }
+      ]
+    },
+    {
+      "id": "sensory-systems-intro",
+      "title": "Fundamentals of Sensory Systems",
+      "prerequisite_node_ids": [
+        "nervous-system-overview",
+        "brain-regions-map"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Define transduction for each major sense"
+        },
+        {
+          "description": "Describe labeled line vs population coding"
+        },
+        {
+          "description": "Trace general sensory pathways to cortex"
+        },
+        {
+          "description": "Explain topographic mapping concepts"
+        },
+        {
+          "description": "Introduce cortical plasticity in sensation"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "brain_facts_book",
+          "section": "Ch.4 The Senses"
+        }
+      ]
+    },
+    {
+      "id": "vision-system-basics",
+      "title": "Visual System Foundations",
+      "prerequisite_node_ids": [
+        "sensory-systems-intro"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Label retina cellular layers"
+        },
+        {
+          "description": "Explain phototransduction cascade"
+        },
+        {
+          "description": "Map retinotopic organization"
+        },
+        {
+          "description": "Relate dorsal vs ventral streams"
+        },
+        {
+          "description": "Discuss color vision theories"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "neurosci_challenged_youtube",
+          "section": "Vision playlist"
+        }
+      ]
+    },
+    {
+      "id": "audition-system-basics",
+      "title": "Auditory System Basics",
+      "prerequisite_node_ids": [
+        "sensory-systems-intro"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Describe cochlear mechanics"
+        },
+        {
+          "description": "Trace auditory pathway to cortex"
+        },
+        {
+          "description": "Explain tonotopic mapping"
+        },
+        {
+          "description": "Differentiate sound localization cues"
+        },
+        {
+          "description": "Outline speech perception specializations"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "neuroscience_purves_7e",
+          "section": "Ch.9 Auditory System"
+        }
+      ]
+    },
+    {
+      "id": "somatosensory-system",
+      "title": "Somatosensory & Pain Pathways",
+      "prerequisite_node_ids": [
+        "sensory-systems-intro"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Identify mechanoreceptor types"
+        },
+        {
+          "description": "Contrast dorsal column and spinothalamic tracts"
+        },
+        {
+          "description": "Explain cortical homunculus concept"
+        },
+        {
+          "description": "Discuss descending pain modulation"
+        },
+        {
+          "description": "Relate plasticity to phantom limb"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "principles_neural_science_6e",
+          "section": "Ch.10 Somatic Sensation"
+        }
+      ]
+    },
+    {
+      "id": "taste-smell-systems",
+      "title": "Taste & Olfactory Systems",
+      "prerequisite_node_ids": [
+        "sensory-systems-intro"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Define taste bud cell types"
+        },
+        {
+          "description": "Describe GPCR odorant transduction"
+        },
+        {
+          "description": "Trace olfactory bulb projections"
+        },
+        {
+          "description": "Compare labeled-line vs across-fiber"
+        },
+        {
+          "description": "Relate chemosensation to emotion"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "brain_facts_book",
+          "section": "Ch.4 Smell and Taste"
+        }
+      ]
+    },
+    {
+      "id": "motor-system-intro",
+      "title": "Principles of Motor Control",
+      "prerequisite_node_ids": [
+        "nervous-system-overview",
+        "brain-regions-map"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Describe motor unit recruitment"
+        },
+        {
+          "description": "Summarize primary motor cortex organization"
+        },
+        {
+          "description": "Explain feedback vs feedforward control"
+        },
+        {
+          "description": "Introduce internal model concept"
+        },
+        {
+          "description": "Identify descending motor pathways"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "mit_ocw_human_brain",
+          "section": "Lecture 13 Motor"
+        }
+      ]
+    },
+    {
+      "id": "spinal-reflexes",
+      "title": "Spinal Reflex Circuits",
+      "prerequisite_node_ids": [
+        "motor-system-intro"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Diagram stretch reflex loop"
+        },
+        {
+          "description": "Explain reciprocal inhibition"
+        },
+        {
+          "description": "Analyze locomotor central pattern generators"
+        },
+        {
+          "description": "Relate reflex testing to diagnostics"
+        },
+        {
+          "description": "Discuss plasticity after injury"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "neuroscience_purves_7e",
+          "section": "Ch.16 Spinal Reflexes"
+        }
+      ]
+    },
+    {
+      "id": "basal-ganglia-cerebellum",
+      "title": "Basal Ganglia & Cerebellum",
+      "prerequisite_node_ids": [
+        "motor-system-intro"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Outline basal ganglia direct and indirect pathways"
+        },
+        {
+          "description": "Describe cerebellar error correction"
+        },
+        {
+          "description": "Relate dopamine to movement initiation"
+        },
+        {
+          "description": "Compare ataxia and Parkinsonism symptoms"
+        },
+        {
+          "description": "Discuss reinforcement learning parallels"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "principles_neural_science_6e",
+          "section": "Ch.41 Basal Ganglia"
+        }
+      ]
+    },
+    {
+      "id": "motor-learning-plasticity",
+      "title": "Motor Learning & Adaptation",
+      "prerequisite_node_ids": [
+        "basal-ganglia-cerebellum",
+        "synaptic-transmission"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Define long-term depression in cerebellum"
+        },
+        {
+          "description": "Interpret prism-adaptation experiments"
+        },
+        {
+          "description": "Explain consolidation of motor skills"
+        },
+        {
+          "description": "Discuss role of cortical plasticity"
+        },
+        {
+          "description": "Apply principles to rehabilitation"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "fundamentals_neuropsychology_8e",
+          "section": "Ch.14 Motor Learning"
+        }
+      ]
+    },
+    {
+      "id": "neurodevelopment-fundamentals",
+      "title": "Neural Development Fundamentals",
+      "prerequisite_node_ids": [
+        "neuron-biology-basics"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Summarize neural tube formation"
+        },
+        {
+          "description": "Describe axon guidance cues"
+        },
+        {
+          "description": "Explain synaptogenesis timeline"
+        },
+        {
+          "description": "Discuss critical periods concept"
+        },
+        {
+          "description": "Identify neurodevelopmental disorder examples"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "foundations_neural_development",
+          "section": "Ch.1-4"
+        }
+      ]
+    },
+    {
+      "id": "neural-plasticity-mechanisms",
+      "title": "Synaptic & Circuit Plasticity",
+      "prerequisite_node_ids": [
+        "synaptic-transmission"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Define LTP and LTD induction rules"
+        },
+        {
+          "description": "Compare Hebbian and homeostatic plasticity"
+        },
+        {
+          "description": "Interpret spike-timing dependent plasticity graphs"
+        },
+        {
+          "description": "Relate plasticity to memory encoding"
+        },
+        {
+          "description": "Describe structural plasticity evidence"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "principles_neural_science_6e",
+          "section": "Ch.67 Synaptic Plasticity"
+        }
+      ]
+    },
+    {
+      "id": "learning-memory-systems",
+      "title": "Learning & Memory Systems",
+      "prerequisite_node_ids": [
+        "neural-plasticity-mechanisms",
+        "brain-regions-map"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Distinguish declarative and procedural memory"
+        },
+        {
+          "description": "Describe hippocampal place cells"
+        },
+        {
+          "description": "Outline systems consolidation theory"
+        },
+        {
+          "description": "Discuss amnesic patient case studies"
+        },
+        {
+          "description": "Explain reconsolidation phenomenon"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "fundamentals_neuropsychology_8e",
+          "section": "Ch.12 Memory"
+        }
+      ]
+    },
+    {
+      "id": "attention-executive-control",
+      "title": "Attention & Executive Control",
+      "prerequisite_node_ids": [
+        "brain-regions-map",
+        "neuroimaging-modalities"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Define endogenous vs exogenous attention"
+        },
+        {
+          "description": "Describe frontoparietal control network"
+        },
+        {
+          "description": "Explain conflict monitoring in ACC"
+        },
+        {
+          "description": "Relate working memory to prefrontal cortex"
+        },
+        {
+          "description": "Interpret fMRI attention tasks"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "mit_ocw_human_brain",
+          "section": "Lecture 20 Attention"
+        }
+      ]
+    },
+    {
+      "id": "language-neural-basis",
+      "title": "Neural Basis of Language",
+      "prerequisite_node_ids": [
+        "brain-regions-map",
+        "learning-memory-systems"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Locate Broca\u2019s and Wernicke\u2019s areas"
+        },
+        {
+          "description": "Differentiate aphasia types"
+        },
+        {
+          "description": "Explain dual-stream language model"
+        },
+        {
+          "description": "Summarize developmental language acquisition"
+        },
+        {
+          "description": "Discuss bilingual brain adaptations"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "neurosci_challenged_youtube",
+          "section": "Language videos"
+        }
+      ]
+    },
+    {
+      "id": "emotion-limbic-system",
+      "title": "Emotion & the Limbic System",
+      "prerequisite_node_ids": [
+        "brain-regions-map",
+        "neurotransmitters-overview"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Identify amygdala nuclei functions"
+        },
+        {
+          "description": "Explain hypothalamic stress responses"
+        },
+        {
+          "description": "Relate prefrontal regulation of emotion"
+        },
+        {
+          "description": "Discuss fear conditioning circuitry"
+        },
+        {
+          "description": "Describe monoamine influence on mood"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "fundamentals_neuropsychology_8e",
+          "section": "Ch.17 Emotion"
+        }
+      ]
+    },
+    {
+      "id": "reward-motivation",
+      "title": "Reward, Motivation & Addiction",
+      "prerequisite_node_ids": [
+        "neurotransmitters-overview",
+        "emotion-limbic-system"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Map mesolimbic dopamine pathway"
+        },
+        {
+          "description": "Define prediction error signaling"
+        },
+        {
+          "description": "Compare natural vs drug rewards"
+        },
+        {
+          "description": "Explain tolerance and sensitization"
+        },
+        {
+          "description": "Outline treatment approaches"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "brain_facts_book",
+          "section": "Ch.13 Addiction"
+        }
+      ]
+    },
+    {
+      "id": "social-neuroscience-intro",
+      "title": "Introduction to Social Neuroscience",
+      "prerequisite_node_ids": [
+        "emotion-limbic-system",
+        "attention-executive-control"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Describe mirror neuron hypothesis"
+        },
+        {
+          "description": "Explain mentalizing network regions"
+        },
+        {
+          "description": "Discuss empathy measurement methods"
+        },
+        {
+          "description": "Relate social rejection to pain circuitry"
+        },
+        {
+          "description": "Identify limitations of fMRI in social studies"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "neuroscience_purves_7e",
+          "section": "Ch.28 Social Brain"
+        }
+      ]
+    },
+    {
+      "id": "sleep-circadian-rhythms",
+      "title": "Sleep & Circadian Rhythms",
+      "prerequisite_node_ids": [
+        "neuronal-membrane-potentials",
+        "neurotransmitters-overview"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Define sleep stages via EEG"
+        },
+        {
+          "description": "Explain suprachiasmatic nucleus pacemaker"
+        },
+        {
+          "description": "Describe neuromodulators of arousal"
+        },
+        {
+          "description": "Discuss glymphatic clearance during sleep"
+        },
+        {
+          "description": "Relate sleep to memory consolidation"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "principles_neural_science_6e",
+          "section": "Ch.50 Sleep"
+        }
+      ]
+    },
+    {
+      "id": "neurological-disorders-overview",
+      "title": "Survey of Neurological Disorders",
+      "prerequisite_node_ids": [
+        "brain-regions-map",
+        "neurotransmitters-overview"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Summarize pathophysiology of stroke"
+        },
+        {
+          "description": "Describe demyelinating diseases"
+        },
+        {
+          "description": "Explain neurodegeneration mechanisms"
+        },
+        {
+          "description": "Match symptoms to lesion locations"
+        },
+        {
+          "description": "Introduce neuroprotective strategies"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "fundamentals_neuropsychology_8e",
+          "section": "Part VI Disorders"
+        }
+      ]
+    },
+    {
+      "id": "psychiatric-disorders-neurobiology",
+      "title": "Neurobiology of Psychiatric Disorders",
+      "prerequisite_node_ids": [
+        "neurotransmitters-overview",
+        "emotion-limbic-system"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Outline dopamine hypothesis of schizophrenia"
+        },
+        {
+          "description": "Discuss serotonin in depression"
+        },
+        {
+          "description": "Explain anxiety circuit hyperactivity"
+        },
+        {
+          "description": "Summarize genetics and environment interplay"
+        },
+        {
+          "description": "Evaluate current neuromodulation therapies"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "brain_facts_book",
+          "section": "Ch.15 Mental Health"
+        }
+      ]
+    },
+    {
+      "id": "computational-neuroscience-basics",
+      "title": "Computational Neuroscience Basics",
+      "prerequisite_node_ids": [
+        "action-potential-mechanics",
+        "synaptic-transmission"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Define integrate-and-fire model"
+        },
+        {
+          "description": "Simulate neuron in Python"
+        },
+        {
+          "description": "Explain rate vs temporal coding"
+        },
+        {
+          "description": "Introduce information theory metrics"
+        },
+        {
+          "description": "Discuss model validation approaches"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "coursera_comp_neuro",
+          "section": "Week 1"
+        }
+      ]
+    },
+    {
+      "id": "neural-network-models",
+      "title": "Neural Network Models of Cognition",
+      "prerequisite_node_ids": [
+        "computational-neuroscience-basics",
+        "learning-memory-systems"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Implement simple Hebbian network"
+        },
+        {
+          "description": "Compare deep nets and cortical hierarchies"
+        },
+        {
+          "description": "Describe attractor networks for memory"
+        },
+        {
+          "description": "Relate predictive coding framework"
+        },
+        {
+          "description": "Assess biologically plausible learning rules"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "coursera_comp_neuro",
+          "section": "Week 4"
+        }
+      ]
+    },
+    {
+      "id": "brain-computer-interfaces",
+      "title": "Brain-Computer Interfaces",
+      "prerequisite_node_ids": [
+        "electrophysiology-techniques",
+        "neural-network-models"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Explain BCI signal acquisition methods"
+        },
+        {
+          "description": "Discuss feature extraction pipelines"
+        },
+        {
+          "description": "Evaluate invasive vs noninvasive trade-offs"
+        },
+        {
+          "description": "Interpret real-time closed-loop control demos"
+        },
+        {
+          "description": "Consider ethical and privacy issues"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "mit_ocw_human_brain",
+          "section": "Lecture 24 Neurotechnology"
+        }
+      ]
+    },
+    {
+      "id": "experimental-design-stats",
+      "title": "Experiment Design & Statistics",
+      "prerequisite_node_ids": [
+        "neuroimaging-modalities",
+        "electrophysiology-techniques"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Formulate testable neural hypotheses"
+        },
+        {
+          "description": "Select appropriate control conditions"
+        },
+        {
+          "description": "Apply t-tests and ANOVA to neural data"
+        },
+        {
+          "description": "Use Bonferroni and FDR corrections"
+        },
+        {
+          "description": "Plan sample size for power"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "openstax_psych_neuro",
+          "section": "Ch.2.3 Research Methods"
+        }
+      ]
+    },
+    {
+      "id": "data-analysis-neuro",
+      "title": "Neuro Data Analysis Workflows",
+      "prerequisite_node_ids": [
+        "experimental-design-stats"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Load neural datasets in Python"
+        },
+        {
+          "description": "Perform spike train analysis"
+        },
+        {
+          "description": "Compute fMRI GLM contrasts"
+        },
+        {
+          "description": "Visualize brain maps"
+        },
+        {
+          "description": "Document reproducible pipelines"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "coursera_comp_neuro",
+          "section": "Week 6 Project"
+        }
+      ]
+    },
+    {
+      "id": "open-science-reproducibility",
+      "title": "Open Science & Reproducibility",
+      "prerequisite_node_ids": [
+        "experimental-design-stats"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Define preregistration and data sharing norms"
+        },
+        {
+          "description": "Use OSF for project management"
+        },
+        {
+          "description": "Explain replication crisis factors"
+        },
+        {
+          "description": "Adopt FAIR data principles"
+        },
+        {
+          "description": "Critique p-hacking practices"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "nature_neuro_history",
+          "section": "Reproducibility sidebar"
+        }
+      ]
+    },
+    {
+      "id": "translational-neuroscience",
+      "title": "Translational & Clinical Neuroscience",
+      "prerequisite_node_ids": [
+        "neurological-disorders-overview",
+        "motor-learning-plasticity"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Describe biomarker discovery pipeline"
+        },
+        {
+          "description": "Explain neurorehabilitation strategies"
+        },
+        {
+          "description": "Evaluate gene therapy for CNS"
+        },
+        {
+          "description": "Assess neuromodulation devices"
+        },
+        {
+          "description": "Connect bench findings to bedside trials"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "fundamentals_neuropsychology_8e",
+          "section": "Ch.30 Translational"
+        }
+      ]
+    },
+    {
+      "id": "future-directions-neuroscience",
+      "title": "Future Directions in Neuroscience",
+      "prerequisite_node_ids": [
+        "translational-neuroscience",
+        "open-science-reproducibility"
+      ],
+      "learning_objectives": [
+        {
+          "description": "Predict impact of large-scale brain projects"
+        },
+        {
+          "description": "Discuss AI-neuroscience synergies"
+        },
+        {
+          "description": "Debate whole-brain emulation feasibility"
+        },
+        {
+          "description": "Assess emerging neuroethical challenges"
+        },
+        {
+          "description": "Identify personal learning next steps"
+        }
+      ],
+      "resource_pointers": [
+        {
+          "rid": "nature_neuro_history",
+          "section": "Future outlook"
+        }
+      ]
+    }
+  ]
+}
