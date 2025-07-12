@@ -46,6 +46,7 @@ def init_database():
         resources_json TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         job_id TEXT,
+        model_used TEXT,
         status TEXT DEFAULT 'completed',
         hours INTEGER DEFAULT 5
     );
@@ -130,7 +131,7 @@ def create_project(topic: str, report_path: str, resources: Dict) -> str:
             conn.execute("BEGIN TRANSACTION")
             conn.execute("""
                 INSERT INTO project (id, topic, report_path, resources_json)
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?)
             """, (
                 project_id,
                 topic,
@@ -144,7 +145,7 @@ def create_project(topic: str, report_path: str, resources: Dict) -> str:
             raise RuntimeError(f"Failed to create project: {str(e)}")
 
 
-def create_project_with_job(topic: str, name: str, job_id: str, status: str = 'processing', hours: int = 5) -> str:
+def create_project_with_job(topic: str, name: str, job_id: str, model_used: str, status: str = 'processing', hours: int = 5) -> str:
     """Create a new project with a job ID for background processing"""
     project_id = str(uuid.uuid4())
     
@@ -152,13 +153,14 @@ def create_project_with_job(topic: str, name: str, job_id: str, status: str = 'p
         try:
             conn.execute("BEGIN TRANSACTION")
             conn.execute("""
-                INSERT INTO project (id, name, topic, job_id, status, hours)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO project (id, name, topic, job_id, model_used, status, hours)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (
                 project_id,
                 name,
                 topic,
                 job_id,
+                model_used,
                 status,
                 hours
             ))
@@ -170,12 +172,12 @@ def create_project_with_job(topic: str, name: str, job_id: str, status: str = 'p
 
 
 # add an update_project_with_job function
-def update_project_with_job(project_id: str, job_id: str, status: str = 'processing'):
+def update_project_with_job(project_id: str, job_id: str, model_used: str, status: str = 'processing'):
     """Update a project with a job ID for background processing"""
     with get_db_connection() as conn:
         conn.execute("""
-            UPDATE project SET job_id = ?, status = ? WHERE id = ?
-        """, (job_id, status, project_id))
+            UPDATE project SET job_id = ?, model_used = ?, status = ? WHERE id = ?
+        """, (job_id, model_used, status, project_id))
         conn.commit()
 
 def update_project_status(project_id: str, status: str):
@@ -533,7 +535,7 @@ def get_project(project_id: str) -> Optional[Dict]:
     """Get project details by ID"""
     with get_db_connection() as conn:
         cursor = conn.execute(
-            "SELECT id, name, topic, report_path, resources_json, created_at, job_id, status, hours FROM project WHERE id = ?", 
+            "SELECT id, name, topic, report_path, resources_json, created_at, job_id, model_used, status, hours FROM project WHERE id = ?", 
             (project_id,)
         )
         row = cursor.fetchone()
@@ -547,8 +549,9 @@ def get_project(project_id: str) -> Optional[Dict]:
                 "resources_json": row[4],
                 "created_at": row[5],
                 "job_id": row[6],
-                "status": row[7] or 'completed',  # Default for old projects
-                "hours": row[8] or 5  # Default to 5 hours for old projects
+                "model_used": row[7],
+                "status": row[8] or 'completed',  # Default for old projects
+                "hours": row[9] or 5  # Default to 5 hours for old projects
             }
             # first get all the edges which have `project_id` = project_id
             edges = get_edges_for_project(conn, project_id)
@@ -565,7 +568,7 @@ def get_project(project_id: str) -> Optional[Dict]:
             project_data['resources'] = json.loads(resources_json_str) if resources_json_str else []
             project_data['resources_json'] = None
 
-            print(f"[get_project] Project {project_id} graph: {graph}")
+            # print(f"[get_project] Project {project_id} graph: {graph}")
             return project_data
     return None
 

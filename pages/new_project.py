@@ -6,6 +6,7 @@ Handles topic input, clarification, and project creation
 import streamlit as st
 from backend.jobs import clarify_topic, rewrite_topic, start_deep_research_job
 from backend.db import create_project_with_job
+from utils.config import DEEP_RESEARCH_MODEL
 
 # Initialize view state
 if 'new_project_view' not in st.session_state:
@@ -207,6 +208,7 @@ elif st.session_state.new_project_view == 'confirmation':
             if st.button("🚀 Start Deep Research", type="primary", use_container_width=True):
                 try:
                     st.session_state.final_topic = possibly_changed_final_topic
+                    model_to_use = DEEP_RESEARCH_MODEL
                     # Start deep research job
                     with st.spinner("Starting deep research..."):
                         job_id = start_deep_research_job(
@@ -220,7 +222,9 @@ elif st.session_state.new_project_view == 'confirmation':
                         topic=st.session_state.final_topic,
                         name=st.session_state.init_topic,  # Use initial topic as name
                         job_id=job_id,
-                        status='processing'
+                        model_used=model_to_use,
+                        status='processing',
+                        hours=st.session_state.final_hours
                     )
                     print(f"[New Project] Created project: {project_id}")
                     

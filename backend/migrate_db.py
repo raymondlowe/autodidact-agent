@@ -350,6 +350,41 @@ def migrate_remove_graph_json_column():
         conn.close()
 
 
+def migrate_add_model_used_field():
+    """Add model_used field to project table"""
+    
+    if not DB_PATH.exists():
+        print("Database does not exist. Run the app first to create it.")
+        return
+    
+    conn = sqlite3.connect(str(DB_PATH))
+    cursor = conn.cursor()
+    
+    try:
+        # Check if column already exists
+        cursor.execute("PRAGMA table_info(project)")
+        columns = [column[1] for column in cursor.fetchall()]
+        
+        # Add model_used if it doesn't exist
+        if 'model_used' not in columns:
+            cursor.execute("ALTER TABLE project ADD COLUMN model_used TEXT")
+            print("Added model_used column to project table")
+            
+            # Update existing projects to have NULL model_used (since we don't know what model was used)
+            print("Note: Existing projects will have NULL model_used value")
+        else:
+            print("model_used column already exists")
+        
+        conn.commit()
+        print("Model used field migration completed successfully!")
+        
+    except Exception as e:
+        print(f"Migration failed: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
+
+
 if __name__ == "__main__":
     migrate_add_job_fields()
     migrate_add_name_field()
@@ -359,3 +394,4 @@ if __name__ == "__main__":
     migrate_add_idx_in_node()
     migrate_add_project_id_to_learning_objective()
     migrate_remove_graph_json_column()
+    migrate_add_model_used_field()

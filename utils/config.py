@@ -19,8 +19,8 @@ CONFIG_FILE = CONFIG_DIR / ".env.json"
 PROJECTS_DIR = CONFIG_DIR / "projects"
 
 # Deep Research API settings
-# DEEP_RESEARCH_MODEL = "o4-mini-deep-research-2025-06-26"
-DEEP_RESEARCH_MODEL = "o3-deep-research"
+DEEP_RESEARCH_MODEL = "o4-mini-deep-research-2025-06-26"
+# DEEP_RESEARCH_MODEL = "o3-deep-research"
 # could maybe use o3-deep-research if we're okay with higher costs for this
 DEEP_RESEARCH_POLL_INTERVAL = 10  # seconds
 

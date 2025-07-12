@@ -75,7 +75,7 @@ def create_knowledge_graph(
     
     # Add nodes
     for node in nodes:
-        print(f"[graph_viz.py] Node: {node}")
+        # print(f"[graph_viz.py] Node: {node}")
         original_id = node['original_id']
         label = node['label']
         mastery = node['mastery']

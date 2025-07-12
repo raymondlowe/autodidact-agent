@@ -18,6 +18,7 @@ class Project:
     resources_json: Dict
     created_at: datetime
     job_id: str
+    model_used: str
     status: str
     hours: int
 

@@ -25,6 +25,43 @@ from utils.config import save_project_files
 # Get project ID from URL or session state
 project_id = st.query_params.get("project_id")
 
+def retry_with_o3(st, project):
+    print(f"[project_detail.py] Project: {project}")
+    old_job_id = project['job_id']
+    old_job_response = check_job(old_job_id)
+    # print(f"[project_detail.py] Old job result: {old_job_response}")
+    reasoning_texts = []
+    for item in old_job_response.output:
+        # print(f"[project_detail.py] Item.type: {item.type}")
+        if item.type == "reasoning":
+            for summary in item.summary:
+                reasoning_texts.append(summary.text)
+
+    # FIXME: unsure if we should even do anything with this: combined_text
+    # combined_text = "An earlier research model failed partway, here are it's reasoning texts on the same prompt, in case those are useful:" + "\n\n".join(reasoning_texts)
+    # print(f"[project_detail.py] Combined text: {combined_text}")
+
+    combined_text = ""
+
+    if 'hours' in project:
+        hours = project['hours']
+    else:
+        hours = 5
+
+    model_to_use_now = "o3"
+
+    new_job_id = start_deep_research_job(project['topic'], hours, combined_text, )
+    print(f"[project_detail.py] New Job ID: {new_job_id}")
+    update_project_with_job(
+                project_id=project_id,
+                job_id=new_job_id,
+                model_used=model_to_use_now,
+                status='processing'
+            )
+    print(f"[project_detail.py] Project ID: {project_id}")
+
+    st.rerun()
+
 # If no project_id in URL but we have it in session state, set it in URL
 if not project_id and "selected_project_id" in st.session_state:
     project_id = st.session_state.selected_project_id
@@ -88,6 +125,11 @@ if project['status'] == 'processing' and project['job_id']:
                 This page will automatically refresh every 10 seconds.
                 Feel free to explore other projects in the meantime!
                 """)
+
+                if project['model_used'] != "o3":
+                    # this is a hack to get the user to retry with o3 if the job is taking too long
+                    if st.button("Taking too long? Retry with o3", type="primary"):
+                        retry_with_o3(st, project)
                 
                 # Auto-refresh
                 time.sleep(10)
@@ -109,38 +151,7 @@ elif project['status'] == 'failed':
     col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("Retry with o3", type="primary"):
-            print(f"[project_detail.py] Project: {project}")
-            old_job_id = project['job_id']
-            old_job_response = check_job(old_job_id)
-            # print(f"[project_detail.py] Old job result: {old_job_response}")
-            reasoning_texts = []
-            for item in old_job_response.output:
-                # print(f"[project_detail.py] Item.type: {item.type}")
-                if item.type == "reasoning":
-                    for summary in item.summary:
-                        reasoning_texts.append(summary.text)
-
-            # FIXME: unsure if we should even do anything with this: combined_text
-            # combined_text = "An earlier research model failed partway, here are it's reasoning texts on the same prompt, in case those are useful:" + "\n\n".join(reasoning_texts)
-
-            combined_text = ""
-            # print(f"[project_detail.py] Combined text: {combined_text}")
-
-            if 'hours' in project:
-                hours = project['hours']
-            else:
-                hours = 5
-
-            new_job_id = start_deep_research_job(project['topic'], hours, combined_text, "o3")
-            print(f"[project_detail.py] New Job ID: {new_job_id}")
-            update_project_with_job(
-                        project_id=project_id,
-                        job_id=new_job_id,
-                        status='processing'
-                    )
-            print(f"[project_detail.py] Project ID: {project_id}")
-
-            st.rerun()
+            retry_with_o3(st, project)
     with col2:
         if st.button("➕ Create New Project", type="primary"):
             st.switch_page("pages/new_project.py")
