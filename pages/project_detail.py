@@ -16,7 +16,8 @@ from backend.db import (
     create_session,
     get_session_stats,
     get_all_projects,
-    update_project_with_job  # Add this import
+    update_project_with_job,  # Add this import
+    delete_project  # Add delete_project import
 )
 from backend.jobs import start_deep_research_job, test_job
 from components.graph_viz import create_knowledge_graph
@@ -165,7 +166,7 @@ elif project['status'] == 'completed':
     st.markdown("---")
     
     # Two-column layout
-    col1, col2 = st.columns([1, 2])
+    col1, col2 = st.columns([1, 3])
     
     with col1:
         # Session controls section
@@ -242,6 +243,51 @@ elif project['status'] == 'completed':
                     st.warning("Report file not found")
             except Exception as e:
                 st.error(f"Error loading report: {str(e)}")
+        
+        # Add dropdown menu for project actions
+        with st.expander("⚙️ Project Actions"):
+            col1_inner, col2_inner, col3_inner = st.columns([1, 1, 2])
+            with col3_inner:
+                if st.button("🗑️ Delete Project", type="secondary", use_container_width=True):
+                    st.session_state.show_delete_confirmation = True
+
+        # Confirmation dialog
+        if st.session_state.get('show_delete_confirmation', False):
+            st.warning("⚠️ **Delete Project?**")
+            st.error("This will permanently delete:")
+            st.markdown("""
+            - All learning progress and mastery scores
+            - All session transcripts  
+            - The knowledge graph and curriculum
+            - Project files and resources
+            
+            **This action cannot be undone!**
+            """)
+            
+            col1_dialog, col2_dialog = st.columns(2)
+            with col1_dialog:
+                if st.button("Cancel", use_container_width=True):
+                    st.session_state.show_delete_confirmation = False
+                    st.rerun()
+            with col2_dialog:
+                if st.button("Delete Permanently", type="primary", use_container_width=True):
+                    try:
+                        with st.spinner("Deleting project..."):
+                            success = delete_project(project_id)
+                            
+                        if success:
+                            st.success("Project deleted successfully!")
+                            time.sleep(1)
+                            # Clear session state
+                            if 'show_delete_confirmation' in st.session_state:
+                                del st.session_state.show_delete_confirmation
+                            # Redirect to home
+                            st.switch_page("pages/home.py")
+                        else:
+                            st.error("Failed to delete project. Please try again.")
+                            
+                    except Exception as e:
+                        st.error(f"Error deleting project: {str(e)}")
     
     with col2:
         # Knowledge graph visualization
@@ -285,7 +331,7 @@ elif project['status'] == 'completed':
                 session_stats = get_session_stats(project_id)
                 if session_stats["total_sessions"] > 0:
                     st.markdown("---")
-                    st.markdown("### �� Session Statistics")
+                    st.markdown("### 📊 Session Statistics")
                     col1, col2, col3 = st.columns(3)
                     with col1:
                         st.metric("Total Sessions", session_stats["total_sessions"])

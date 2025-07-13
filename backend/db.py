@@ -740,6 +740,114 @@ def get_session_info(session_id: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+def delete_project(project_id: str) -> bool:
+    """
+    Delete a project and all associated data.
+    Returns True if successful, False otherwise.
+    """
+    import shutil
+    from openai import OpenAI
+    from utils.config import load_api_key
+    
+    try:
+        # Step 1: Cancel active job if processing
+        project = get_project(project_id)
+        if not project:
+            raise ValueError(f"Project {project_id} not found")
+            
+        if project['status'] == 'processing' and project['job_id']:
+            # Cancel the OpenAI job
+            api_key = load_api_key()
+            if api_key:
+                client = OpenAI(api_key=api_key)
+                try:
+                    client.responses.cancel(project['job_id'])
+                    print(f"Cancelled job {project['job_id']} for project {project_id}")
+                except Exception as e:
+                    print(f"Failed to cancel job {project['job_id']}: {e}")
+                    # Continue with deletion anyway
+        
+        # Step 2: Database deletion in transaction
+        with get_db_connection() as conn:
+            conn.execute("BEGIN TRANSACTION")
+            
+            try:
+                # 1. Get all sessions for this project
+                cursor = conn.execute(
+                    "SELECT id FROM session WHERE project_id = ?", 
+                    (project_id,)
+                )
+                session_ids = [row[0] for row in cursor.fetchall()]
+                
+                # 2. Delete transcripts for all sessions
+                if session_ids:
+                    placeholders = ','.join(['?' for _ in session_ids])
+                    conn.execute(
+                        f"DELETE FROM transcript WHERE session_id IN ({placeholders})",
+                        session_ids
+                    )
+                    print(f"Deleted transcripts for {len(session_ids)} sessions")
+                
+                # 3. Delete all sessions
+                cursor = conn.execute(
+                    "DELETE FROM session WHERE project_id = ?",
+                    (project_id,)
+                )
+                print(f"Deleted {cursor.rowcount} sessions")
+                
+                # 4. Delete learning objectives
+                cursor = conn.execute(
+                    "DELETE FROM learning_objective WHERE project_id = ?",
+                    (project_id,)
+                )
+                print(f"Deleted {cursor.rowcount} learning objectives")
+                
+                # 5. Delete edges
+                cursor = conn.execute(
+                    "DELETE FROM edge WHERE project_id = ?",
+                    (project_id,)
+                )
+                print(f"Deleted {cursor.rowcount} edges")
+                
+                # 6. Delete nodes
+                cursor = conn.execute(
+                    "DELETE FROM node WHERE project_id = ?",
+                    (project_id,)
+                )
+                print(f"Deleted {cursor.rowcount} nodes")
+                
+                # 7. Delete project record
+                cursor = conn.execute(
+                    "DELETE FROM project WHERE id = ?",
+                    (project_id,)
+                )
+                print(f"Deleted project record")
+                
+                conn.commit()
+                print(f"Successfully deleted all database records for project {project_id}")
+                
+            except Exception as e:
+                conn.rollback()
+                raise RuntimeError(f"Failed to delete project from database: {str(e)}")
+        
+        # Step 3: Delete project files
+        project_dir = Path.home() / '.autodidact' / 'projects' / project_id
+        
+        if project_dir.exists():
+            try:
+                shutil.rmtree(project_dir)
+                print(f"Deleted project files at {project_dir}")
+            except Exception as e:
+                print(f"Warning: Failed to delete project files: {e}")
+                # Don't fail the whole operation if file deletion fails
+        
+        return True
+        
+    except Exception as e:
+        print(f"Error in delete_project: {str(e)}")
+        return False
+
+
 # Initialize database on module import
 if __name__ != "__main__":
     init_database() 
