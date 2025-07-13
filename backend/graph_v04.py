@@ -69,6 +69,81 @@ def transition_phase_on_user_input(state: SessionState) -> SessionState:
     return state
 
 
+def parse_final_answers(questions: List[QuizQuestion], user_text: str) -> List[str]:
+    """Use LLM to intelligently parse user's test answers"""
+    client = OpenAI(api_key=load_api_key())
+    
+    # Build question list for context
+    question_list = []
+    for i, q in enumerate(questions, 1):
+        question_list.append(f"Question {i}: {q.q}")
+    
+    prompt = f"""Parse the user's test answers and match them to the questions.
+
+Questions asked:
+{chr(10).join(question_list)}
+
+User's response:
+{user_text}
+
+Extract the answer for each question. Return a JSON array with exactly {len(questions)} strings, 
+where each string is the user's answer to the corresponding question (in order).
+If an answer is missing or unclear, use an empty string.
+
+Example output format: ["Answer to Q1", "Answer to Q2", "Answer to Q3", ...]
+"""
+    
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a test answer parser. Extract answers accurately, preserving the user's exact wording."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.1,
+            response_format={"type": "json_object"}
+        )
+        
+        import json
+        result = json.loads(response.choices[0].message.content)
+        
+        # Extract array from various possible formats
+        if isinstance(result, list):
+            answers = result
+        elif isinstance(result, dict):
+            # Try common keys
+            for key in ['answers', 'parsed_answers', 'result', 'data']:
+                if key in result and isinstance(result[key], list):
+                    answers = result[key]
+                    break
+            else:
+                # If no array found, return empty answers
+                print(f"[parse_final_answers] Unexpected format: {result}")
+                answers = [""] * len(questions)
+        else:
+            answers = [""] * len(questions)
+        
+        # Ensure we have exactly the right number of answers
+        if len(answers) < len(questions):
+            answers.extend([""] * (len(questions) - len(answers)))
+        elif len(answers) > len(questions):
+            answers = answers[:len(questions)]
+        
+        return answers
+        
+    except Exception as e:
+        print(f"[parse_final_answers] Error parsing with LLM: {e}")
+        # Fallback to simple splitting
+        parts = user_text.split('\n\n')
+        answers = []
+        for i in range(len(questions)):
+            if i < len(parts):
+                answers.append(parts[i].strip())
+            else:
+                answers.append("")
+        return answers
+
+
 def calculate_session_duration(state: SessionState) -> float:
     """Calculate session duration in minutes"""
     if not state.get('start_time') or not state.get('end_time'):
@@ -396,40 +471,6 @@ def prereq_quiz_ask_node(state: SessionState) -> SessionState:
     answered_count = len(state['prereq_quiz_answers'])
     total_questions = len(state['prereq_quiz_questions'])
     
-    if answered_count >= total_questions:
-        # All questions answered - provide summary
-        correct_count = sum(1 for ans in state['prereq_quiz_answers'] 
-                           if 'correct' in ans.question.answer.lower() or 
-                           ans.user_answer.lower() == ans.question.answer.lower())
-        
-        summary = f"You got {correct_count} out of {total_questions} correct. "
-        
-        if correct_count == total_questions:
-            summary += "Your prerequisite knowledge is solid."
-        elif correct_count >= total_questions * 0.7:
-            summary += "You have a good grasp of the prerequisites."
-        else:
-            summary += "We'll make sure to clarify these concepts as we go."
-        
-        summary += f"\n\nNow let's explore {state['node_title']}."
-        
-        state['messages'].append({
-            "role": "assistant",
-            "content": summary
-        })
-        log_session_message(state, "assistant", summary, {"phase": "prereq_quiz_complete"})
-        state['turn_count'] += 1
-        
-        log_session_event(state, "prerequisite_quiz_completed", {
-            "correct": correct_count,
-            "total": total_questions,
-            "score": correct_count / total_questions if total_questions > 0 else 0
-        })
-        
-        state['current_phase'] = 'teaching'
-        state['current_objective_phase'] = 'probe_ask'  # Initialize teaching phase
-        return state
-    
     # Check if we need to process an answer
     if state['messages'] and state['messages'][-1]['role'] == 'user':
         # Process previous answer
@@ -477,20 +518,58 @@ No praise. Be direct and helpful."""
         log_session_message(state, "assistant", feedback, {"phase": "prereq_feedback"})
         state['turn_count'] += 1
     
-    # Ask next question if any remain
-    if answered_count < total_questions:
-        next_question = state['prereq_quiz_questions'][answered_count]
+    # Check if all questions have been answered and feedback given
+    if answered_count >= total_questions:
+        # Check if we've already shown the summary
+        last_msg = state['messages'][-1] if state['messages'] else None
+        if last_msg and last_msg['role'] == 'assistant' and 'Now let\'s explore' not in last_msg['content']:
+            # We just showed feedback for the last question, now show summary
+            correct_count = sum(1 for ans in state['prereq_quiz_answers'] 
+                               if 'correct' in ans.question.answer.lower() or 
+                               ans.user_answer.lower() == ans.question.answer.lower())
+            
+            summary = f"\n**Quiz Complete!**\n\nYou got {correct_count} out of {total_questions} correct. "
+            
+            if correct_count == total_questions:
+                summary += "Your prerequisite knowledge is solid."
+            elif correct_count >= total_questions * 0.7:
+                summary += "You have a good grasp of the prerequisites."
+            else:
+                summary += "We'll make sure to clarify these concepts as we go."
+            
+            summary += f"\n\nNow let's explore {state['node_title']}."
+            
+            state['messages'].append({
+                "role": "assistant",
+                "content": summary
+            })
+            log_session_message(state, "assistant", summary, {"phase": "prereq_quiz_complete"})
+            state['turn_count'] += 1
+            
+            log_session_event(state, "prerequisite_quiz_completed", {
+                "correct": correct_count,
+                "total": total_questions,
+                "score": correct_count / total_questions if total_questions > 0 else 0
+            })
         
-        # Format question
-        question_text = f"**Question {answered_count + 1} of {total_questions}:**\n\n"
-        question_text += next_question.format_for_display()
-        
-        state['messages'].append({
-            "role": "assistant",
-            "content": question_text
-        })
-        log_session_message(state, "assistant", question_text, {"phase": "prereq_question"})
-        state['turn_count'] += 1
+        # Transition to teaching
+        state['current_phase'] = 'teaching'
+        state['current_objective_phase'] = 'probe_ask'  # Initialize teaching phase
+        return state
+    
+    # Ask next question
+    next_question = state['prereq_quiz_questions'][answered_count]
+    
+    # Format question
+    question_text = f"**Question {answered_count + 1} of {total_questions}:**\n\n"
+    question_text += next_question.format_for_display()
+    
+    state['messages'].append({
+        "role": "assistant",
+        "content": question_text
+    })
+    log_session_message(state, "assistant", question_text, {"phase": "prereq_question"})
+    state['turn_count'] += 1
     
     return state
 
@@ -796,31 +875,12 @@ def grade_prep_node(state: SessionState) -> SessionState:
     
     user_answers_text = state['messages'][-1]['content']
     
-    # Parse the answers and create TestAnswer objects
-    # Simple parsing - split by question numbers
-    answers = []
-    answer_parts = user_answers_text.split('\n\n')
+    # Use LLM to parse answers intelligently
+    parsed_answers = parse_final_answers(state['final_test_questions'], user_answers_text)
     
-    for i, q in enumerate(state['final_test_questions']):
-        # Try to find the answer for this question
-        user_answer = ""
-        for part in answer_parts:
-            if f"Question {i+1}" in part or f"q{i+1}" in part.lower() or f"{i+1}." in part or f"{i+1})" in part:
-                # Found a part that might be for this question
-                user_answer = part
-                break
-        
-        if not user_answer and i < len(answer_parts):
-            # Fallback: assume answers are in order
-            user_answer = answer_parts[i]
-        
-        # Clean up the answer
-        user_answer = user_answer.strip()
-        # Remove question number prefixes
-        for prefix in [f"Question {i+1}:", f"Q{i+1}:", f"{i+1}.", f"{i+1})"]:
-            if user_answer.startswith(prefix):
-                user_answer = user_answer[len(prefix):].strip()
-        
+    # Create TestAnswer objects
+    answers = []
+    for i, (q, user_answer) in enumerate(zip(state['final_test_questions'], parsed_answers)):
         test_answer = TestAnswer(
             question_id=i,
             question=q,
@@ -955,6 +1015,15 @@ REASONING: [brief explanation in 1-2 sentences]"""
     
     # Update mastery in database
     update_mastery(state['node_id'], final_objective_scores)
+    
+    # Add transition message before showing detailed results
+    transition_msg = "I've finished grading your test. Let me show you how you did..."
+    state['messages'].append({
+        "role": "assistant",
+        "content": transition_msg
+    })
+    log_session_message(state, "assistant", transition_msg, {"phase": "grading_complete"})
+    state['turn_count'] += 1
     
     state['current_phase'] = 'wrap_up'
     return state
