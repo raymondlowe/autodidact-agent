@@ -183,7 +183,7 @@ elif project['status'] == 'completed':
                     session_id = create_session(project_id, next_nodes[0]['id'])
                     st.session_state.selected_project_id = project_id
                     st.session_state.selected_session_id = session_id
-                    st.switch_page("pages/session-detail.py")
+                    st.switch_page("pages/session_detail.py")
             else:
                 # Multiple options
                 st.info("**Choose your next topic:**")
@@ -198,7 +198,7 @@ elif project['status'] == 'completed':
                     session_id = create_session(project_id, selected)
                     st.session_state.selected_project_id = project_id
                     st.session_state.selected_session_id = session_id
-                    st.switch_page("pages/session-detail.py")
+                    st.switch_page("pages/session_detail.py")
         else:
             st.success("🎉 **Congratulations!**\n\nYou've completed all available topics!")
             # Show completion stats

@@ -28,7 +28,7 @@ if "api_key" not in st.session_state:
 home = st.Page("pages/home.py", title="Home", url_path="", default=True)
 new_project = st.Page("pages/new_project.py", title="New Project", url_path="new")
 project = st.Page("pages/project_detail.py", title="Project", url_path="project")
-session = st.Page("pages/session-detail.py", title="Session", url_path="session") 
+session = st.Page("pages/session_detail.py", title="Session", url_path="session") 
 settings = st.Page("pages/settings.py", title="Settings", url_path="settings")
 
 # Create navigation with all pages
