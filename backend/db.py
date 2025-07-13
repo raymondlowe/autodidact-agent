@@ -9,6 +9,12 @@ import uuid
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Any
 from contextlib import contextmanager
+import logging
+import os
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Constants
 MASTERY_THRESHOLD = 0.7
@@ -26,13 +32,29 @@ def ensure_db_directory():
 @contextmanager
 def get_db_connection():
     """Context manager for database connections"""
+    logger.debug(f"get_db_connection called, DB_PATH={DB_PATH}")
     ensure_db_directory()
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row  # Enable column access by name
+    logger.debug("Database directory ensured")
+    
     try:
-        yield conn
-    finally:
-        conn.close()
+        logger.debug("Attempting to connect to SQLite database...")
+        conn = sqlite3.connect(str(DB_PATH))
+        logger.debug("SQLite connection established")
+        conn.row_factory = sqlite3.Row  # Enable column access by name
+        logger.debug("Row factory set")
+        
+        try:
+            yield conn
+            logger.debug("Connection yielded successfully")
+        finally:
+            logger.debug("Closing database connection...")
+            conn.close()
+            logger.debug("Database connection closed")
+            
+    except Exception as e:
+        logger.error(f"Error in get_db_connection: {type(e).__name__}: {str(e)}")
+        logger.exception("Full traceback:")
+        raise
 
 
 def init_database():
@@ -216,7 +238,7 @@ def update_project_completed_and_save_graph_to_db(project_id: str, report_path: 
                 conn.execute("""
                     INSERT INTO node (id, project_id, original_id, label, summary, references_sections_json)
                     VALUES (?, ?, ?, ?, ?, ?)
-                """, (node_id, project_id, node['id'], node['title'], node.get('summary', ''), json.dumps(node.get('resource_pointers', []))))
+                """, (node_id, project_id, node['id'], node['title'], '', json.dumps(node.get('resource_pointers', []))))
 
                 # Save learning objectives
                 for idx, lo in enumerate(node.get('learning_objectives', [])):
@@ -400,24 +422,47 @@ def check_job(job_id: str) -> bool:
 
 def create_session(project_id: str, node_id: str) -> str:
     """Create a new learning session and return its ID"""
+    logger.info(f"create_session called with project_id={project_id}, node_id={node_id}")
     session_id = str(uuid.uuid4())
+    logger.debug(f"Generated session_id: {session_id}")
     
-    with get_db_connection() as conn:
-        # Get the session number for this project
-        cursor = conn.execute("""
-            SELECT COUNT(*) + 1 FROM session WHERE project_id = ?
-        """, (project_id,))
-        session_number = cursor.fetchone()[0]
+    try:
+        logger.debug("Attempting to get database connection...")
+        with get_db_connection() as conn:
+            logger.debug("Got database connection successfully")
+            
+            # Get the session number for this project
+            logger.debug(f"Querying session count for project {project_id}")
+            cursor = conn.execute("""
+                SELECT COUNT(*) + 1 FROM session WHERE project_id = ?
+            """, (project_id,))
+            session_number = cursor.fetchone()[0]
+            logger.debug(f"Session number for this project: {session_number}")
+            
+            # Create the session
+            logger.debug(f"Inserting new session: id={session_id}, project_id={project_id}, node_id={node_id}, session_number={session_number}")
+            conn.execute("""
+                INSERT INTO session (id, project_id, node_id, session_number)
+                VALUES (?, ?, ?, ?)
+            """, (session_id, project_id, node_id, session_number))
+            
+            logger.debug("Committing transaction...")
+            conn.commit()
+            logger.debug("Transaction committed successfully")
+            
+        logger.info(f"Session created successfully with id: {session_id}")
+        return session_id
         
-        # Create the session
-        conn.execute("""
-            INSERT INTO session (id, project_id, node_id, session_number)
-            VALUES (?, ?, ?, ?)
-        """, (session_id, project_id, node_id, session_number))
+    except Exception as e:
+        logger.error(f"Error in create_session: {type(e).__name__}: {str(e)}")
+        logger.exception("Full traceback:")
         
-        conn.commit()
-    
-    return session_id
+        # Run debug diagnostics
+        if "database is locked" in str(e).lower():
+            logger.warning("Database lock detected, running diagnostics...")
+            debug_database_connections()
+        
+        raise
 
 
 def complete_session(session_id: str, final_score: float):
@@ -847,6 +892,54 @@ def delete_project(project_id: str) -> bool:
     except Exception as e:
         print(f"Error in delete_project: {str(e)}")
         return False
+
+
+def debug_database_connections():
+    """Debug function to check for database connections and locks"""
+    logger.info("=== DATABASE DEBUG INFO ===")
+    logger.info(f"Database path: {DB_PATH}")
+    logger.info(f"Database exists: {DB_PATH.exists()}")
+    
+    if DB_PATH.exists():
+        logger.info(f"Database size: {DB_PATH.stat().st_size} bytes")
+        logger.info(f"Database permissions: {oct(DB_PATH.stat().st_mode)}")
+        
+        # Try to check for processes with the database file open
+        try:
+            import psutil
+            for proc in psutil.process_iter(['pid', 'name']):
+                try:
+                    for file in proc.open_files():
+                        if str(DB_PATH) in file.path:
+                            logger.warning(f"Process {proc.info['pid']} ({proc.info['name']}) has database file open")
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+        except ImportError:
+            logger.debug("psutil not available for process checking")
+    
+    # Try a test connection
+    try:
+        test_conn = sqlite3.connect(str(DB_PATH), timeout=1.0)
+        logger.info("Test connection successful")
+        
+        # Check journal mode
+        cursor = test_conn.execute("PRAGMA journal_mode")
+        journal_mode = cursor.fetchone()[0]
+        logger.info(f"Journal mode: {journal_mode}")
+        
+        # Check if there are any locks
+        cursor = test_conn.execute("PRAGMA database_list")
+        databases = cursor.fetchall()
+        for db in databases:
+            logger.info(f"Database: {db}")
+        
+        test_conn.close()
+        logger.info("Test connection closed successfully")
+        
+    except Exception as e:
+        logger.error(f"Test connection failed: {type(e).__name__}: {str(e)}")
+    
+    logger.info("=== END DATABASE DEBUG INFO ===")
 
 
 # Initialize database on module import

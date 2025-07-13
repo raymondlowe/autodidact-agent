@@ -7,6 +7,7 @@ import streamlit as st
 import json
 import time
 from pathlib import Path
+import logging
 from backend.db import (
     check_job,
     get_project, 
@@ -22,6 +23,9 @@ from backend.db import (
 from backend.jobs import start_deep_research_job, test_job
 from components.graph_viz import create_knowledge_graph
 from utils.config import save_project_files
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 # Get project ID from URL or session state
 project_id = st.query_params.get("project_id")
@@ -195,11 +199,21 @@ elif project['status'] == 'completed':
                     label_visibility="collapsed"
                 )
                 if st.button("Start Session →", type="primary", use_container_width=True):
-                    # Create new session and navigate
-                    session_id = create_session(project_id, selected)
-                    st.session_state.selected_project_id = project_id
-                    st.session_state.selected_session_id = session_id
-                    st.switch_page("pages/session_detail.py")
+                    logger.info(f"Start Session button clicked for project_id={project_id}, selected_node={selected}")
+                    try:
+                        # Create new session and navigate
+                        logger.debug(f"Calling create_session with project_id={project_id}, node_id={selected}")
+                        session_id = create_session(project_id, selected)
+                        logger.info(f"Session created successfully: {session_id}")
+                        
+                        st.session_state.selected_project_id = project_id
+                        st.session_state.selected_session_id = session_id
+                        logger.debug(f"Session state updated, navigating to session_detail.py")
+                        st.switch_page("pages/session_detail.py")
+                    except Exception as e:
+                        logger.error(f"Error creating session: {type(e).__name__}: {str(e)}")
+                        logger.exception("Full traceback:")
+                        st.error(f"Failed to create session: {str(e)}")
         else:
             st.success("🎉 **Congratulations!**\n\nYou've completed all available topics!")
             # Show completion stats
