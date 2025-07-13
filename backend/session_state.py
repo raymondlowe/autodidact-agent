@@ -83,8 +83,7 @@ class SessionState(TypedDict):
     # Control flags
     force_end_session: bool  # User requested early end
     current_objective_index: int  # Which objective we're teaching
-    current_objective_phase: str  # "probe", "explain", "quiz", or "done"
-    objective_exchanges: int  # Track exchanges within current objective
+    current_objective_phase: str  # "probe_ask", "probe_respond", "explain_present", "explain_respond", "quiz_ask", or "quiz_evaluate"
     
     # Metadata
     domain_level: str  # "basic", "intermediate", or "advanced"
@@ -139,8 +138,7 @@ def create_initial_state(
         # Control flags
         "force_end_session": False,
         "current_objective_index": 0,
-        "current_objective_phase": "probe",
-        "objective_exchanges": 0,
+        "current_objective_phase": "probe_ask",
         
         # Metadata
         "domain_level": domain_level,

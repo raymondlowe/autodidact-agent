@@ -32,6 +32,43 @@ from backend.quiz_generators import (
 
 # Helper functions
 
+def get_next_teaching_phase(current_phase: str) -> str:
+    """Get next phase in teaching sequence"""
+    transitions = {
+        "probe_ask": "probe_respond",
+        "probe_respond": "explain_present",
+        "explain_present": "explain_respond", 
+        "explain_respond": "quiz_ask",
+        "quiz_ask": "quiz_evaluate",
+        "quiz_evaluate": "probe_ask"  # Next objective
+    }
+    return transitions.get(current_phase, "probe_ask")
+
+
+def is_waiting_phase(phase: str) -> bool:
+    """Check if phase requires user input"""
+    return phase in ["probe_ask", "explain_present", "quiz_ask"]
+
+
+def transition_phase_on_user_input(state: SessionState) -> SessionState:
+    """Transition to the appropriate response phase when user provides input"""
+    phase = state.get('current_objective_phase', 'probe_ask')
+    
+    # Map waiting phases to their response phases
+    transitions_on_input = {
+        "probe_ask": "probe_respond",
+        "explain_present": "explain_respond",
+        "quiz_ask": "quiz_evaluate"
+    }
+    
+    # If we're in a waiting phase and have user input, transition
+    if phase in transitions_on_input and state.get('messages') and state['messages'][-1]['role'] == 'user':
+        state['current_objective_phase'] = transitions_on_input[phase]
+        print(f"[transition_phase] {phase} -> {state['current_objective_phase']}")
+    
+    return state
+
+
 def calculate_session_duration(state: SessionState) -> float:
     """Calculate session duration in minutes"""
     if not state.get('start_time') or not state.get('end_time'):
@@ -310,6 +347,7 @@ Be conversational but efficient. No praise."""
     })
     
     state['current_phase'] = 'teaching'
+    state['current_objective_phase'] = 'probe_ask'  # Initialize teaching phase
     return state
 
 
@@ -389,6 +427,7 @@ def prereq_quiz_ask_node(state: SessionState) -> SessionState:
         })
         
         state['current_phase'] = 'teaching'
+        state['current_objective_phase'] = 'probe_ask'  # Initialize teaching phase
         return state
     
     # Check if we need to process an answer
@@ -457,14 +496,16 @@ No praise. Be direct and helpful."""
 
 
 def tutor_loop_node(state: SessionState) -> SessionState:
-    """Main teaching loop - teach objectives one by one"""
+    """Main teaching loop - teach objectives one by one using explicit state machine"""
+    # First, handle phase transitions if we just received user input
+    state = transition_phase_on_user_input(state)
+    
     current_idx = state['current_objective_index']
     objectives = state['objectives_to_teach']
+    phase = state.get('current_objective_phase', 'probe_ask')
     
     # Debug logging
-    phase = state.get('current_objective_phase', 'probe')
-    exchanges = state.get('objective_exchanges', 0)
-    print(f"[tutor_loop] Starting - objective {current_idx + 1}/{len(objectives)}, phase={phase}, exchanges={exchanges}")
+    print(f"[tutor_loop] Objective {current_idx + 1}/{len(objectives)}, phase={phase}")
     
     # Check if we've completed all objectives
     if current_idx >= len(objectives):
@@ -473,34 +514,14 @@ def tutor_loop_node(state: SessionState) -> SessionState:
         return state
     
     current_obj = objectives[current_idx]
-    print(f"[tutor_loop] Teaching objective {current_idx + 1}: {current_obj.description}")
+    print(f"[tutor_loop] Teaching: {current_obj.description}")
     
     client = OpenAI(api_key=load_api_key())
     logger = SessionLogger(state['project_id'], state['session_id'])
     
-    # Initialize phase if not set
-    if 'current_objective_phase' not in state:
-        state['current_objective_phase'] = 'probe'
-    
-    phase = state['current_objective_phase']
-    
-    # Track teaching progress for current objective
-    # Use a state variable to track exchanges more reliably
-    if 'objective_exchanges' not in state:
-        state['objective_exchanges'] = 0
-    
-    # Check if we just received a user message
-    just_received_user_msg = (
-        len(state['messages']) > 0 and 
-        state['messages'][-1]['role'] == 'user'
-    )
-    
-
-    
-    # Handle different phases of teaching an objective
-    if phase == 'probe' and state['objective_exchanges'] == 0 and not just_received_user_msg:
-
-        # Start with Socratic probe
+    # Handle each phase with exactly ONE action
+    if phase == 'probe_ask':
+        # Generate Socratic probe question
         prompt = f"""We're now focusing on Objective {current_idx + 1} of {len(objectives)}:
 "{current_obj.description}"
 
@@ -518,11 +539,19 @@ Be direct and specific. No praise."""
         
         message = response.choices[0].message.content
         state['messages'].append({"role": "assistant", "content": message})
-        log_session_message(state, "assistant", message, {"phase": "probe", "objective": current_idx + 1})
+        log_session_message(state, "assistant", message, {"phase": "probe_ask", "objective": current_idx + 1})
         state['turn_count'] += 1
         
-    elif phase == 'probe' and just_received_user_msg:
-        # Handle user's response to probe, then transition to explain
+        # Stay in probe_ask phase - waiting for user response
+        
+    elif phase == 'probe_respond':
+        # Process user's response to probe
+        if not state['messages'] or state['messages'][-1]['role'] != 'user':
+            # No user message to process, shouldn't happen
+            print(f"[tutor_loop] WARNING: In probe_respond but no user message")
+            state['current_objective_phase'] = 'explain_present'
+            return state
+            
         user_input = state['messages'][-1]['content']
         
         prompt = f"""The student responded to your probe with: "{user_input}"
@@ -541,16 +570,14 @@ Be concise."""
         
         message = response.choices[0].message.content
         state['messages'].append({"role": "assistant", "content": message})
-        log_session_message(state, "assistant", message, {"phase": "probe_response", "objective": current_idx + 1})
+        log_session_message(state, "assistant", message, {"phase": "probe_respond", "objective": current_idx + 1})
         state['turn_count'] += 1
         
-        # Transition to explain phase
-        state['current_objective_phase'] = 'explain'
-        state['objective_exchanges'] = 0
+        # Transition to next phase
+        state['current_objective_phase'] = 'explain_present'
         
-    elif phase == 'explain' and state['objective_exchanges'] == 0 and not just_received_user_msg:
-
-        # Provide a clear EXPLANATION (not another question) about this concept.
+    elif phase == 'explain_present':
+        # Present the explanation
         prompt = f"""Now explain the concept: "{current_obj.description}"
 
 Provide a clear EXPLANATION (not another question) about this concept.
@@ -571,12 +598,19 @@ No praise."""
         
         message = response.choices[0].message.content
         state['messages'].append({"role": "assistant", "content": message})
-        log_session_message(state, "assistant", message, {"phase": "explain", "objective": current_idx + 1})
+        log_session_message(state, "assistant", message, {"phase": "explain_present", "objective": current_idx + 1})
         state['turn_count'] += 1
-        state['objective_exchanges'] = 1
         
-    elif phase == 'explain' and just_received_user_msg and state['objective_exchanges'] == 1:
-        # Handle user's response to explanation, then transition to quiz
+        # Stay in explain_present phase - waiting for user response
+        
+    elif phase == 'explain_respond':
+        # Handle user's response to explanation
+        if not state['messages'] or state['messages'][-1]['role'] != 'user':
+            # No user message, skip to quiz
+            print(f"[tutor_loop] No user response to explanation, moving to quiz")
+            state['current_objective_phase'] = 'quiz_ask'
+            return state
+            
         user_input = state['messages'][-1]['content']
         
         prompt = f"""The student said: "{user_input}" after your explanation.
@@ -595,14 +629,13 @@ Be concise."""
         
         message = response.choices[0].message.content
         state['messages'].append({"role": "assistant", "content": message})
-        log_session_message(state, "assistant", message, {"phase": "explain_response", "objective": current_idx + 1})
+        log_session_message(state, "assistant", message, {"phase": "explain_respond", "objective": current_idx + 1})
         state['turn_count'] += 1
         
-        # Transition to quiz phase
-        state['current_objective_phase'] = 'quiz'
-        state['objective_exchanges'] = 0
-    
-    elif phase == 'quiz' and state['objective_exchanges'] == 0 and not just_received_user_msg:
+        # Transition to quiz
+        state['current_objective_phase'] = 'quiz_ask'
+        
+    elif phase == 'quiz_ask':
         # Generate and ask micro-quiz
         quiz_q = generate_micro_quiz(current_obj, state.get('micro_quiz_history', []))
         
@@ -618,12 +651,20 @@ Be concise."""
         quiz_text = "\n**Quick check:**\n" + quiz_q.format_for_display()
         
         state['messages'].append({"role": "assistant", "content": quiz_text})
-        log_session_message(state, "assistant", quiz_text, {"phase": "micro_quiz", "objective": current_idx + 1})
+        log_session_message(state, "assistant", quiz_text, {"phase": "quiz_ask", "objective": current_idx + 1})
         state['turn_count'] += 1
-        state['objective_exchanges'] = 1  # Mark that we've asked the quiz
         
-    elif phase == 'quiz' and just_received_user_msg and state['objective_exchanges'] == 1:
-        # Evaluate micro-quiz answer
+        # Stay in quiz_ask phase - waiting for user response
+        
+    elif phase == 'quiz_evaluate':
+        # Evaluate quiz answer
+        if not state['messages'] or state['messages'][-1]['role'] != 'user':
+            print(f"[tutor_loop] WARNING: In quiz_evaluate but no user answer")
+            # Move to next objective anyway
+            state['current_objective_index'] += 1
+            state['current_objective_phase'] = 'probe_ask'
+            return state
+            
         user_answer = state['messages'][-1]['content']
         quiz_q = QuizQuestion(**state['micro_quiz_history'][-1]['question'])
         
@@ -663,7 +704,7 @@ No praise."""
             feedback += f"\n\nWe've covered all {len(objectives)} objectives for this topic."
         
         state['messages'].append({"role": "assistant", "content": feedback})
-        log_session_message(state, "assistant", feedback, {"phase": "quiz_feedback", "objective": current_idx + 1})
+        log_session_message(state, "assistant", feedback, {"phase": "quiz_evaluate", "objective": current_idx + 1})
         state['turn_count'] += 1
         
         # Log completion
@@ -675,47 +716,12 @@ No praise."""
         
         # Move to next objective
         state['current_objective_index'] += 1
-        state['current_objective_phase'] = 'probe'
-        state['objective_exchanges'] = 0  # Reset for next objective
-    
+        state['current_objective_phase'] = 'probe_ask'
+        
     else:
-
-        # Handle any unexpected states or user input
-        if state['messages'] and state['messages'][-1]['role'] == 'user':
-            # Log unexpected state for debugging
-            print(f"[tutor_loop] WARNING: Unexpected state - phase={phase}, exchanges={state['objective_exchanges']}, just_received_user_msg={just_received_user_msg}")
-            
-            # Respond to user's comment/question
-            user_input = state['messages'][-1]['content']
-            
-            prompt = f"""The student said: "{user_input}"
-            
-We're currently working on: "{current_obj.description}"
-Current phase: {phase}
-
-Respond helpfully and guide the conversation back to the learning objective.
-Be concise. No praise."""
-            
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": get_tutor_system_prompt(state)},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.5
-            )
-            
-            message = response.choices[0].message.content
-            state['messages'].append({"role": "assistant", "content": message})
-            log_session_message(state, "assistant", message, {"phase": f"unexpected_{phase}", "objective": current_idx + 1})
-            state['turn_count'] += 1
-            
-            # Reset to a known state if we're stuck
-            if state['objective_exchanges'] > 3:
-                print(f"[tutor_loop] Resetting to next objective due to stuck state")
-                state['current_objective_index'] += 1
-                state['current_objective_phase'] = 'probe'
-                state['objective_exchanges'] = 0
+        # Unknown phase - log error and try to recover
+        print(f"[tutor_loop] ERROR: Unknown phase '{phase}', resetting to probe_ask")
+        state['current_objective_phase'] = 'probe_ask'
     
     state['current_phase'] = 'teaching'
     return state
@@ -1045,23 +1051,41 @@ def should_do_prerequisites(state: SessionState) -> str:
 
 def should_continue_teaching(state: SessionState) -> str:
     """Determine if teaching should continue or move to final test"""
-    current_idx = state.get('current_objective_index', 0)
-    total_objectives = len(state.get('objectives_to_teach', []))
-    
-    # Check if we just sent a message and need to wait for user input
-    if len(state.get('messages', [])) > 0:
-        last_msg = state['messages'][-1]
-        if last_msg['role'] == 'assistant':
-            # We just sent a message, stop the graph to wait for user input
-            return "wait_for_input"
-    
+    # First check if user wants to end early
     if state.get('force_end_session', False):
         return "finish"
     
-    if all_objectives_completed(state):
+    # Check if all objectives are completed
+    current_idx = state.get('current_objective_index', 0)
+    total_objectives = len(state.get('objectives_to_teach', []))
+    if current_idx >= total_objectives:
         return "finish"
     
-    # Continue processing if we have user input to respond to
+    # Check current phase to determine if we should wait for user input
+    phase = state.get('current_objective_phase', 'probe_ask')
+    
+    # Phases that wait for user input
+    if is_waiting_phase(phase):
+        # Check if we just sent a message (need to wait for user)
+        if state.get('messages') and state['messages'][-1]['role'] == 'assistant':
+            return "wait_for_input"
+    
+    # Phases that should transition after user input
+    response_phases = ['probe_respond', 'explain_respond', 'quiz_evaluate']
+    if phase in response_phases:
+        # Check if we have a user message to process
+        if state.get('messages') and state['messages'][-1]['role'] == 'user':
+            # Continue to process the user input
+            return "continue"
+        else:
+            # No user input but we're in a response phase
+            # This shouldn't happen, but transition anyway
+            print(f"[should_continue_teaching] WARNING: In {phase} but no user message")
+            # Update phase to move forward
+            state['current_objective_phase'] = get_next_teaching_phase(phase)
+            return "continue"
+    
+    # Default: continue processing
     return "continue"
 
 

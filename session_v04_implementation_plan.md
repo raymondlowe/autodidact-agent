@@ -2,6 +2,7 @@
 
 **Status:** Ready for Implementation  
 **Created:** 2025-07-13  
+**Updated:** 2025-01-21 - Added explicit state machine design for tutor loop
 **Purpose:** Complete replacement of current graph.py with new LangGraph-based learning session engine
 
 ## Overview
@@ -12,6 +13,7 @@ This document outlines the implementation of a new session engine that addresses
 - Uses cost-optimized model selection (expensive only for grading)
 - Provides comprehensive assessment with 6-question final test
 - Supports early session termination while still assessing covered material
+- **NEW:** Implements explicit state machine for predictable teaching flow
 
 ## Key Design Decisions
 
@@ -97,6 +99,7 @@ class SessionState(TypedDict):
     # Control flags
     force_end_session: bool
     current_objective_index: int
+    current_objective_phase: str  # NEW: Explicit phase names
     
     # Metadata
     domain_level: str
@@ -104,6 +107,24 @@ class SessionState(TypedDict):
     start_time: str
     end_time: Optional[str]
 ```
+
+### Teaching State Machine Design
+
+#### Explicit Teaching Phases
+For each learning objective, the tutor follows these explicit phases:
+
+1. **probe_ask** - Generate Socratic question about the objective
+2. **probe_respond** - Process user's response and transition
+3. **explain_present** - Provide explanation of the concept
+4. **explain_respond** - Handle any questions/comments
+5. **quiz_ask** - Present micro-quiz question
+6. **quiz_evaluate** - Evaluate answer and move to next objective
+
+#### State Transition Rules
+- Each phase performs ONE action: either generates a message OR processes user input
+- Phases ending in "_ask" or "_present" always wait for user input
+- Phases ending in "_respond" or "_evaluate" process input and transition
+- No complex counters or message detection needed
 
 ### Phase 2: LangGraph Node Implementation
 
@@ -126,11 +147,15 @@ class SessionState(TypedDict):
 5. **prereq_quiz_ask**: Administer quiz with corrections
 
 6. **tutor_loop**: Main teaching cycle
+   - **UPDATED:** Implements explicit state machine
    - For each objective with mastery < 0.7:
-     - Socratic probe
-     - Explanation (≤200 words)
-     - Micro-quiz (formative)
-   - Handle early exit requests
+     - probe_ask → (wait for user)
+     - probe_respond → explain_present
+     - explain_present → (wait for user)
+     - explain_respond → quiz_ask
+     - quiz_ask → (wait for user)
+     - quiz_evaluate → next objective
+   - Handle early exit requests at any phase
 
 7. **final_test_build**: Generate 6-question test
    - Default: 3 MCQ + 2 short + 1 paraphrase
@@ -179,13 +204,37 @@ def should_continue_teaching(state: SessionState) -> str:
     if state["force_end_session"]:
         return "finish"
     
-    current_idx = state["current_objective_index"]
-    total_objectives = len(state["objectives_to_teach"])
-    
-    if current_idx >= total_objectives:
+    # Check if all objectives are completed
+    if state["current_objective_index"] >= len(state["objectives_to_teach"]):
         return "finish"
     
+    # Check if we're waiting for user input
+    phase = state.get("current_objective_phase", "")
+    if phase in ["probe_ask", "explain_present", "quiz_ask"]:
+        # These phases always wait for user input
+        if state["messages"] and state["messages"][-1]["role"] == "assistant":
+            return "wait_for_input"
+    
     return "continue"
+```
+
+#### Helper Functions for State Machine
+```python
+def get_next_teaching_phase(current_phase: str) -> str:
+    """Get next phase in teaching sequence"""
+    transitions = {
+        "probe_ask": "probe_respond",
+        "probe_respond": "explain_present",
+        "explain_present": "explain_respond",
+        "explain_respond": "quiz_ask",
+        "quiz_ask": "quiz_evaluate",
+        "quiz_evaluate": "probe_ask"  # Next objective
+    }
+    return transitions.get(current_phase, "probe_ask")
+
+def is_waiting_phase(phase: str) -> bool:
+    """Check if phase requires user input"""
+    return phase in ["probe_ask", "explain_present", "quiz_ask"]
 ```
 
 ### Phase 4: Session Logging
@@ -264,13 +313,36 @@ RULES
    - Network retry with exponential backoff
    - Grader fallback to cheaper model
    - Graceful handling of empty prerequisites
+   - **NEW:** State machine recovery for unexpected states
 
 ## Migration Strategy
 
 1. Keep existing graph.py temporarily renamed
 2. Implement new system in parallel
-3. Update imports in session_detail.py
-4. Test thoroughly before removing old code
+3. **NEW:** Refactor tutor_loop_node with explicit state machine
+4. Update imports in session_detail.py
+5. Test thoroughly before removing old code
+
+### State Machine Migration Steps
+
+1. **Remove fragile tracking:**
+   - Delete `objective_exchanges` from SessionState
+   - Remove `just_received_user_msg` logic
+   - Remove complex state detection code
+
+2. **Implement phase-based logic:**
+   - Add explicit phase names
+   - One action per graph execution
+   - Clear wait states for user input
+
+3. **Update conditional edges:**
+   - Fix `should_continue_teaching` to properly detect wait states
+   - Ensure graph pauses when waiting for user
+
+4. **Test phase transitions:**
+   - Unit test each phase independently
+   - Integration test full teaching cycles
+   - Edge case testing for early exits
 
 ## Success Criteria
 
@@ -284,6 +356,9 @@ RULES
 - [ ] Prerequisites handled with choice
 - [ ] Database updates work correctly
 - [ ] UI integration is seamless
+- [ ] **NEW:** State machine transitions are predictable and debuggable
+- [ ] **NEW:** Graph properly pauses for user input
+- [ ] **NEW:** No dropped messages or skipped phases
 
 ## Next Steps
 
