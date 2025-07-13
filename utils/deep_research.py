@@ -108,7 +108,7 @@ TASK 2 - GRAPH
   }
 
 TASK 3 - CONSOLIDATE AND RETURN FINAL VALID JSON
-- Return **one valid JSON object** with keys `"resources"` and `"nodes"`.  
+- Return **one valid JSON object** with keys `"resources"` and `"nodes"`. no comments, no markdown.
 - Any non-JSON text will be discarded.
 """
 
