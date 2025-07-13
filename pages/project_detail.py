@@ -78,8 +78,8 @@ if not project_id:
 
 # Get project
 project = get_project(project_id)
-if not project['status'] == 'processing':
-    print(f"[project_detail.py] Project: {project}")
+# if not project['status'] == 'processing':
+#     print(f"[project_detail.py] Project: {project}")
 
 if not project:
     st.error("Project not found!")

@@ -16,6 +16,112 @@ from backend.db import (
 )
 from backend.graph import create_tutor_graph
 
+
+def run_tutor_response(session_info, node_info):
+    """Run the tutor graph to generate response"""
+    
+    # Check if user has previous sessions
+    has_prev = has_previous_sessions(
+        session_info['project_id'],
+        session_info['id']
+    )
+    
+    # Create the graph
+    tutor_graph = create_tutor_graph()
+    
+    # Convert messages to dict format before passing to graph
+    def convert_message(msg):
+        if hasattr(msg, 'content') and hasattr(msg, 'type'):
+            return {"role": "assistant" if msg.type == "ai" else "user", "content": msg.content}
+        return msg
+    
+    # Initialize state
+    state = {
+        "session_id": session_info['id'],
+        "node_id": session_info['node_id'],
+        "turn_count": st.session_state.turn_count,
+        "has_previous_session": has_prev,
+        "messages": [convert_message(msg) for msg in st.session_state.messages],
+        "learning_objectives": node_info['learning_objectives'],
+        "lo_scores": {},
+        "current_phase": st.session_state.current_phase,
+        "node_info": node_info,
+        "project_id": session_info['project_id']
+    }
+    
+    # Show thinking spinner
+    with st.spinner("🤔 Thinking..."):
+        try:
+            # Run the graph
+            result = tutor_graph.invoke(state)
+            
+            # Extract new messages and convert to dict format
+            new_messages = result["messages"][len(st.session_state.messages):]
+            
+            # Update session state with converted messages
+            st.session_state.messages = [convert_message(msg) for msg in result["messages"]]
+            st.session_state.turn_count = result["turn_count"]
+            
+            # Display new assistant messages
+            for msg in new_messages:
+                converted_msg = convert_message(msg)
+                if converted_msg["role"] == "assistant":
+                    with st.chat_message("assistant"):
+                        st.markdown(converted_msg["content"])
+                    
+                    # Save to transcript
+                    save_transcript(
+                        session_info['id'],
+                        st.session_state.turn_count - 1,
+                        "assistant",
+                        converted_msg["content"]
+                    )
+            
+            # Check if session is complete
+            if "lo_scores" in result and result["lo_scores"]:
+                # Calculate final score as average of all LO scores
+                final_score = sum(result["lo_scores"].values()) / len(result["lo_scores"])
+                
+                # Complete the session
+                complete_session(session_info['id'], final_score)
+                
+                # Session complete, show completion message
+                st.balloons()
+                st.success(f"🎉 **Session Complete!** Your score: {int(final_score * 100)}%")
+                
+                # Show completion buttons
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("✅ Back to Project", type="primary", use_container_width=True):
+                        st.session_state.selected_project_id = session_info['project_id']
+                        st.switch_page("pages/project_detail.py")
+                
+                with col2:
+                    if st.button("📊 View Progress", type="secondary", use_container_width=True):
+                        st.session_state.selected_project_id = session_info['project_id']
+                        st.switch_page("pages/project_detail.py")
+                    
+        except openai.AuthenticationError:
+            st.error("❌ API key authentication failed. Please check your API key in Settings.")
+            if st.button("Go to Settings"):
+                st.switch_page("pages/settings.py")
+        except openai.RateLimitError:
+            st.error("⏳ Rate limit reached. Please wait a moment and try again.")
+            st.info("Consider upgrading your OpenAI plan for higher rate limits.")
+        except Exception as e:
+            st.error(f"❌ Error in tutor response: {str(e)}")
+            st.info("Try refreshing the page or starting a new session.")
+            
+            # Show debug info in expander
+            with st.expander("🐛 Debug Information"):
+                st.json({
+                    "session_id": session_info['id'],
+                    "turn_count": st.session_state.turn_count,
+                    "current_phase": st.session_state.current_phase,
+                    "message_count": len(st.session_state.messages)
+                })
+
+
 # Get session info from URL or session state
 project_id = st.query_params.get("project_id")
 session_id = st.query_params.get("session_id")
@@ -149,101 +255,3 @@ with col2:
             run_tutor_response(session_info, node_info)
     else:
         st.info("This session has been completed. Exit to start a new session on a different topic!")
-
-
-def run_tutor_response(session_info, node_info):
-    """Run the tutor graph to generate response"""
-    
-    # Check if user has previous sessions
-    has_prev = has_previous_sessions(
-        session_info['project_id'],
-        session_info['id']
-    )
-    
-    # Create the graph
-    tutor_graph = create_tutor_graph()
-    
-    # Initialize state
-    state = {
-        "session_id": session_info['id'],
-        "node_id": session_info['node_id'],
-        "turn_count": st.session_state.turn_count,
-        "has_previous_session": has_prev,
-        "messages": st.session_state.messages.copy(),
-        "learning_objectives": node_info['learning_objectives'],
-        "lo_scores": {},
-        "current_phase": st.session_state.current_phase,
-        "node_info": node_info,
-        "project_id": session_info['project_id']
-    }
-    
-    # Show thinking spinner
-    with st.spinner("🤔 Thinking..."):
-        try:
-            # Run the graph
-            result = tutor_graph.invoke(state)
-            
-            # Extract new messages
-            new_messages = result["messages"][len(st.session_state.messages):]
-            
-            # Update session state
-            st.session_state.messages = result["messages"]
-            st.session_state.turn_count = result["turn_count"]
-            
-            # Display new assistant messages
-            for msg in new_messages:
-                if msg["role"] == "assistant":
-                    with st.chat_message("assistant"):
-                        st.markdown(msg["content"])
-                    
-                    # Save to transcript
-                    save_transcript(
-                        session_info['id'],
-                        st.session_state.turn_count - 1,
-                        "assistant",
-                        msg["content"]
-                    )
-            
-            # Check if session is complete
-            if "lo_scores" in result and result["lo_scores"]:
-                # Calculate final score as average of all LO scores
-                final_score = sum(result["lo_scores"].values()) / len(result["lo_scores"])
-                
-                # Complete the session
-                complete_session(session_info['id'], final_score)
-                
-                # Session complete, show completion message
-                st.balloons()
-                st.success(f"🎉 **Session Complete!** Your score: {int(final_score * 100)}%")
-                
-                # Show completion buttons
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("✅ Back to Project", type="primary", use_container_width=True):
-                        st.session_state.selected_project_id = session_info['project_id']
-                        st.switch_page("pages/project_detail.py")
-                
-                with col2:
-                    if st.button("📊 View Progress", type="secondary", use_container_width=True):
-                        st.session_state.selected_project_id = session_info['project_id']
-                        st.switch_page("pages/project_detail.py")
-                    
-        except openai.AuthenticationError:
-            st.error("❌ API key authentication failed. Please check your API key in Settings.")
-            if st.button("Go to Settings"):
-                st.switch_page("pages/settings.py")
-        except openai.RateLimitError:
-            st.error("⏳ Rate limit reached. Please wait a moment and try again.")
-            st.info("Consider upgrading your OpenAI plan for higher rate limits.")
-        except Exception as e:
-            st.error(f"❌ Error in tutor response: {str(e)}")
-            st.info("Try refreshing the page or starting a new session.")
-            
-            # Show debug info in expander
-            with st.expander("🐛 Debug Information"):
-                st.json({
-                    "session_id": session_info['id'],
-                    "turn_count": st.session_state.turn_count,
-                    "current_phase": st.session_state.current_phase,
-                    "message_count": len(st.session_state.messages)
-                }) 
