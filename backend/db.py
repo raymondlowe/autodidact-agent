@@ -761,6 +761,7 @@ def delete_project(project_id: str) -> bool:
             if api_key:
                 client = OpenAI(api_key=api_key)
                 try:
+                    # FIXME: also cancel the job when we retry with o3?
                     client.responses.cancel(project['job_id'])
                     print(f"Cancelled job {project['job_id']} for project {project_id}")
                 except Exception as e:
