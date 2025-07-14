@@ -631,6 +631,27 @@ def get_node_with_objectives(node_id: str) -> Optional[Dict]:
             return None
         
         node_dict = dict(node)
+
+        # Fetch project's `topic` and `resources_json`
+        cursor = conn.execute(
+            "SELECT topic, resources_json FROM project WHERE id = ?",
+            (node_dict['project_id'],)
+        )
+        project = cursor.fetchone()
+        node_dict['topic'] = project[0]
+
+        node_references_sections = json.loads(node_dict.get('references_sections_json', '[]'))
+        project_resources = json.loads(project[1]) if project[1] else []
+
+        # for each node_references_sections, add the `references` to the section
+        for section in node_references_sections:
+            # find the reference with same `rid` in project_resources
+            project_ref = [ref for ref in project_resources if ref['rid'] == section['rid']]
+            project_ref = project_ref[0] if project_ref else None 
+            # copy everything from project_ref into the section
+            section.update(project_ref)
+
+        node_dict['references_sections_resolved'] = node_references_sections
         
         # Get learning objectives
         cursor = conn.execute(
@@ -762,9 +783,7 @@ def get_session_info(session_id: str) -> Optional[Dict[str, Any]]:
                 s.final_score,
                 p.topic as project_topic,
                 n.label as node_label,
-                n.original_id as node_original_id,
-                n.references_sections_json as node_references_sections_json,
-                p.resources_json as project_resources_json
+                n.original_id as node_original_id
             FROM session s
             JOIN project p ON s.project_id = p.id
             JOIN node n ON s.node_id = n.id
@@ -772,18 +791,6 @@ def get_session_info(session_id: str) -> Optional[Dict[str, Any]]:
         """, (session_id,))
         
         row = cursor.fetchone()
-        node_references_sections = json.loads(row[9]) if row[9] else []
-        project_resources = json.loads(row[10]) if row[10] else []
-
-        # for each node_references_sections, add the `references` to the section
-        for section in node_references_sections:
-            # find the reference with same `rid` in project_resources
-            project_ref = [ref for ref in project_resources if ref['rid'] == section['rid']]
-            project_ref = project_ref[0] if project_ref else None 
-            # copy everything from project_ref into the section
-            section.update(project_ref)
-        
-        # print(f"new node_references_sections: {node_references_sections}")
 
         if row:
             return {
@@ -795,8 +802,7 @@ def get_session_info(session_id: str) -> Optional[Dict[str, Any]]:
                 "final_score": row[5],
                 "project_topic": row[6],
                 "node_label": row[7],
-                "node_original_id": row[8],
-                "node_references_sections": node_references_sections
+                "node_original_id": row[8]
             }
         return None
 

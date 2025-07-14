@@ -237,9 +237,7 @@ def load_context_node(state: SessionState) -> SessionState:
         # Nodes don't have summary - removed this line
         
         # 2. Parse references
-        import json
-        references_json = node_data.get('references_sections_json', '[]')
-        state['references_sections'] = json.loads(references_json) if references_json else []
+        state['references_sections_resolved'] = node_data.get('references_sections_resolved', [])
         
         # 3. Categorize objectives by mastery
         all_objectives = []
@@ -289,6 +287,7 @@ def load_context_node(state: SessionState) -> SessionState:
               f"{len(state['prerequisite_objectives'])} prerequisites")
         
         state['current_phase'] = 'intro'
+        print(f"[load_context] state: {state}")
         return state
         
     except Exception as e:
@@ -326,6 +325,10 @@ def tutor_intro_node(state: SessionState) -> SessionState:
             return state
     else:
         # First time - generate introduction
+        print(f"[tutor_intro] Generating introduction for {state['node_title']}")
+        print(f"prerequisites: {has_prerequisites(state)}, {len(state['prerequisite_objectives'])}: {state['prerequisite_objectives']}")
+
+        # FIXME: if there are no prereqs, don't ask for a quiz or summary. Handle that usecase
         intro_prompt = f"""Introduce the node "{state['node_title']}" in 2 sentences maximum.
 Then ask if they'd like a quiz or summary of prerequisites.
 

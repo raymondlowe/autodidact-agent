@@ -143,8 +143,7 @@ def session_info_dialog():
     for i, obj in enumerate(node_info['learning_objectives'], 1):
         st.markdown(f"{i}. {obj['description']}")
     st.markdown("### 📚 References")
-    # node_references_sections and stuff like that should be in node_info but was easier to add in session_info, need to fix TODO
-    for i, ref in enumerate(session_info['node_references_sections'], 1):
+    for i, ref in enumerate(node_info['references_sections_resolved'], 1):
         nat_lang_section_text = ref.get("section") or ref.get("loc") or ""
         if nat_lang_section_text:
             nat_lang_section_text = f"({nat_lang_section_text})"
