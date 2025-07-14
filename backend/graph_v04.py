@@ -235,6 +235,7 @@ def load_context_node(state: SessionState) -> SessionState:
         state['node_original_id'] = node_data.get('original_id', '')
         state['node_title'] = node_data.get('label', 'Unknown Node')
         # Nodes don't have summary - removed this line
+        state['project_topic'] = node_data.get('project_topic', '')
         
         # 2. Parse references
         state['references_sections_resolved'] = node_data.get('references_sections_resolved', [])

@@ -638,7 +638,7 @@ def get_node_with_objectives(node_id: str) -> Optional[Dict]:
             (node_dict['project_id'],)
         )
         project = cursor.fetchone()
-        node_dict['topic'] = project[0]
+        node_dict['project_topic'] = project[0]
 
         node_references_sections = json.loads(node_dict.get('references_sections_json', '[]'))
         project_resources = json.loads(project[1]) if project[1] else []
