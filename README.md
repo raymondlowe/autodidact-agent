@@ -1,5 +1,11 @@
 # Autodidact - AI-Powered Learning Assistant
 
+Note: I have a bunch of kinks I need to iron out with this project (I'll do them over the next few days), but the main structure is mostly done
+
+Here is a quick video overview of the project: 
+https://github.com/baibhavbista/autodidact-agent
+
+
 Autodidact is an AI-powered personalized learning assistant that creates custom study plans, provides interactive tutoring sessions, and tracks your learning progress.
 
 ## Features
