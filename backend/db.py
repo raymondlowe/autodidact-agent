@@ -495,13 +495,14 @@ def get_next_nodes(project_id: str) -> List[Dict[str, Any]]:
         GROUP BY n.id
     )
     SELECT id, label FROM prerequisite_check
-    WHERE prereq_count = 0 OR prereq_count = met_count
+    WHERE (prereq_count = 0 OR prereq_count = met_count)
+    AND mastery < ?
     ORDER BY mastery ASC
     LIMIT 2
     """
     
     with get_db_connection() as conn:
-        cursor = conn.execute(query, (MASTERY_THRESHOLD, project_id))
+        cursor = conn.execute(query, (MASTERY_THRESHOLD, project_id, MASTERY_THRESHOLD))
         return [dict(row) for row in cursor.fetchall()]
 
 

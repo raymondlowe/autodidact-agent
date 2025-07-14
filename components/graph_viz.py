@@ -99,6 +99,7 @@ def create_knowledge_graph(
             for idx, lo in enumerate(node['learning_objectives']):
                 # replace all [markdown links](http://...) with empty string
                 # Remove markdown links - keep the text, remove the URL
+                # print(f"[graph_viz.py] Learning Objective: {lo['id']} description: {lo['description']}")
                 desc = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', lo['description']).replace("\n", " ")
                 mastery = lo['mastery']
                 mastery_pct = int(mastery * 100)
