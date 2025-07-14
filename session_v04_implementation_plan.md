@@ -104,8 +104,8 @@ class SessionState(TypedDict):
     # Metadata
     domain_level: str
     turn_count: int
-    start_time: str
-    end_time: Optional[str]
+    session_start: str
+    session_end: Optional[str]
 ```
 
 ### Teaching State Machine Design

@@ -1,22 +1,29 @@
-"""
-Tutor Session page
-Interactive learning sessions with AI tutor
-"""
-
+# """
+# Tutor Session page
+# Interactive learning sessions with AI tutor
+# """
+from __future__ import annotations
 import streamlit as st
 from backend.db import (
     get_node_with_objectives,
     get_session_info
 )
-from backend.graph_v04 import create_session_graph
+from backend.graph_v05 import (
+  create_initial_state, 
+  SessionState,
+  session_graph
+)
 
+from pathlib import Path
+import pickle
+from datetime import datetime
+from typing import Any, Dict
 
 def run_tutor_response(session_info, node_info):
     """Run the v0.4 tutor graph to generate response - pure state transformation, no UI"""
     from backend.session_state import create_initial_state
-    
-    # Create the graph
-    tutor_graph = create_session_graph()
+    print(f"[run_tutor_response] session_info: {session_info}")
+    tutor_graph = session_graph
     
     # Initialize or update state
     if 'graph_state' not in st.session_state:
@@ -31,36 +38,48 @@ def run_tutor_response(session_info, node_info):
         state = st.session_state.graph_state
     
     # Sync messages from UI state to graph state
-    state['messages'] = st.session_state.messages.copy()
+    state['history'] = st.session_state.history.copy() or []
     
     # Track message count before invocation
-    prev_msg_count = len(state['messages'])
+    prev_msg_count = len(state['history'])
     
     try:
         # Run the graph with recursion limit
-        # FIXME: should recursion limit be this high?
-        config = {"recursion_limit": 50}
-        for event in tutor_graph.stream(state, config):
-            # Update state with latest event
-            for node_name, node_state in event.items():
-                state = node_state
-                st.session_state.graph_state = state
+        config = {"recursion_limit": 10, 
+                  "configurable": {"thread_id": session_info.get("id", "default")}}
+        print(f"[run_tutor_response] going to invoke graph with config: {config}")
+        while True:
+            state = tutor_graph.invoke(state, config)
+            if state.get('navigate_without_user_interaction')==True:
+                state["navigate_without_user_interaction"] = False
+                continue
+            else:
+                break
+        st.session_state.graph_state = state
+        # for event in tutor_graph.stream(state, config):
+        #     # Update state with latest event
+        #     for node_name, node_state in event.items():
+        #         state = node_state
+        #         st.session_state.graph_state = state
         
         # Sync messages back from graph state to UI state
-        st.session_state.messages = state['messages'].copy()
+        st.session_state.history = state['history'].copy()
         st.session_state.turn_count = state.get('turn_count', 0)
         st.session_state.current_phase = state.get('current_phase', 'teaching')
+
+        _save_state(state)
         
         # Return info about what happened
         return {
             'success': True,
-            'new_message_count': len(state['messages']) - prev_msg_count,
+            'new_message_count': len(state['history']) - prev_msg_count,
             'is_completed': state.get('current_phase') == 'completed',
             'final_score': sum(state.get('objective_scores', {}).values()) / len(state['objective_scores']) if state.get('objective_scores') else 0
         }
         
     except Exception as e:
         # Return error info without displaying UI
+        print(f"error in run_tutor_response: {e}")
         error_type = 'unknown'
         if "AuthenticationError" in str(type(e)):
             error_type = 'auth'
@@ -76,14 +95,14 @@ def run_tutor_response(session_info, node_info):
             'debug_info': {
                 "session_id": session_info['id'],
                 "current_phase": state.get('current_phase', 'unknown'),
-                "message_count": len(st.session_state.messages),
+                "message_count": len(st.session_state.history),
                 "objectives_to_teach": len(state.get('objectives_to_teach', [])),
                 "completed_objectives": len(state.get('completed_objectives', set()))
             }
         }
 
 
-# Get session info from URL or session state
+# # Get session info from URL or session state
 project_id = st.query_params.get("project_id")
 session_id = st.query_params.get("session_id")
 
@@ -117,18 +136,19 @@ if not session_info:
             st.switch_page("pages/home.py")
     st.stop()
 
-# # Initialize session state for this session
-# if "messages" not in st.session_state:
-#     st.session_state.messages = []
-# # Remove the graph_state initialization - let run_tutor_response handle it
+# # # Initialize session state for this session
+# # if "messages" not in st.session_state:
+# #     st.session_state.messages = []
+# # # Remove the graph_state initialization - let run_tutor_response handle it
 
 # Get node information
-node_info = get_node_with_objectives(session_info['node_id'])
+node_id = session_info['node_id']
+node_info = get_node_with_objectives(node_id)
 if not node_info:
     st.error("Node information not found!")
     st.stop()
 
-# # Check if this is a completed session
+# # # Check if this is a completed session
 is_completed = session_info["status"] == "completed"
 
 # Header
@@ -149,6 +169,28 @@ def session_info_dialog():
             nat_lang_section_text = f"({nat_lang_section_text})"
         st.markdown(f"{i}. [{ref['title']}]({ref['url']}) {nat_lang_section_text}")
 
+# optional local pickle store (same as earlier helper but inline)
+_STORE = Path.home() / '.autodidact' / 'projects' / project_id / 'sessions'
+_STORE.mkdir(exist_ok=True)
+
+def _load_state(session_id: str) -> SessionState | None:
+    # FIXME: break this for now
+    return None
+    fp = _STORE / f"{session_id}.pkl"
+    if not fp.exists():
+        return None
+    return pickle.loads(fp.read_bytes())
+
+def _save_state(state: SessionState):
+    # FIXME: break this for now
+    return
+    fp = _STORE / f"{state['session_id']}.pkl"
+    fp.write_bytes(pickle.dumps(state))
+
+state: SessionState | None = _load_state(session_id)
+if state is None:
+    state = create_initial_state(session_id, project_id, node_id)
+
 # Session control buttons
 with st.container():
     col1, col2, col3 = st.columns(3)
@@ -160,15 +202,15 @@ with st.container():
     with col2:
         if not is_completed and st.session_state.get('graph_state'):
             # Only show early end if session is active and we've started teaching
-            if st.session_state.graph_state.get('current_phase') in ['teaching', 'final_test']:
-                if st.button("⏹️ End Session Early", type="secondary", use_container_width=True):
-                    # Set the force end flag and run the graph
-                    st.session_state.graph_state['force_end_session'] = True
-                    st.session_state.messages.append({
-                        "role": "user",
-                        "content": "I'd like to end the session early please."
-                    })
-                    st.rerun()
+            if st.button("⏹️ End Session Early", type="secondary", use_container_width=True, disabled=(not st.session_state.graph_state.get('navigate_without_user_interaction'))):
+                # Set the force end flag and run the graph
+                st.session_state.graph_state['exit_requested'] = True
+                st.session_state.history.append({
+                    "role": "user",
+                    "content": "I'd like to end the session early please."
+                })
+                # FIXME: is this the correct way to do a rerun here?
+                st.rerun()
 
     with col3:
         # add session info button here which opens a modal with the session info
@@ -176,35 +218,37 @@ with st.container():
             session_info_dialog()
 
 # Initialize chat history
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+if "history" not in st.session_state:
+    st.session_state.history = []
 
 # Display chat messages from history on app rerun
-for message in st.session_state.messages:
+for message in st.session_state.history:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
 # Handle initial message generation
-if not is_completed and len(st.session_state.messages) == 0:
+if not is_completed and len(st.session_state.history) == 0:
     # Generate initial welcome message
     with st.chat_message("assistant"):
         with st.spinner("🤔 Preparing session..."):
             result = run_tutor_response(session_info, node_info)
             if result['success']:
                 # Display the new message(s)
-                new_messages = st.session_state.messages[-result['new_message_count']:]
+                new_messages = st.session_state.history[-result['new_message_count']:]
+                print(f"new_messages: {new_messages}")
                 for msg in new_messages:
                     if msg["role"] == "assistant":
+                        print(f"msg to be shown: {msg['content']}")
                         st.markdown(msg["content"])
             else:
-                st.error(f"❌ Failed to start session: {result['error']}")
+                st.error(f"❌ Failed to start session: {result['error']} {result}")
 
 # Accept user input (disabled for completed sessions)
 if not is_completed:
     if prompt := st.chat_input("Your response..."):
         
         # Add user message to chat history
-        st.session_state.messages.append({"role": "user", "content": prompt})
+        st.session_state.history.append({"role": "user", "content": prompt})
         
         # Display user message in chat message container
         with st.chat_message("user"):
@@ -217,13 +261,15 @@ if not is_completed:
                 
                 if result['success']:
                     # Display new assistant messages
-                    new_messages = st.session_state.messages[-result['new_message_count']:]
+                    new_messages = st.session_state.history[-result['new_message_count']:]
+                    print(f"new_messages: {new_messages}")
                     for msg in new_messages:
                         if msg["role"] == "assistant":
+                            print(f"msg to be shown: {msg['content']}")
                             st.markdown(msg["content"])
                     
                     print(f"result: {result}")
-                    print(f"st.session_state.messages: {st.session_state.messages}")
+                    print(f"st.session_state.history: {st.session_state.history}")
                     
                     # Check if session is completed
                     if result['is_completed']:

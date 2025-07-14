@@ -651,6 +651,7 @@ def get_node_with_objectives(node_id: str) -> Optional[Dict]:
             # copy everything from project_ref into the section
             section.update(project_ref)
 
+        node_dict['references_sections_json'] = None
         node_dict['references_sections_resolved'] = node_references_sections
         
         # Get learning objectives

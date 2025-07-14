@@ -39,9 +39,9 @@ class SessionLogger:
         with open(self.log_path, 'w', encoding='utf-8') as f:
             f.write(f"# Learning Session: {state['node_title']}\n\n")
             f.write(f"**Session ID:** `{state['session_id']}`\n")
-            f.write(f"**Started:** {state['start_time']}\n")
+            f.write(f"**Started:** {state['session_start']}\n")
             f.write(f"**Node:** {state['node_title']}\n")
-            f.write(f"**Domain Level:** {state['domain_level']}\n\n")
+            f.write(f"**Domain Level:** {state.get('domain_level', 'unknown')}\n\n")
             
             # Learning objectives section
             f.write("## 📚 Learning Objectives\n\n")
@@ -64,11 +64,11 @@ class SessionLogger:
                     f.write(f"- {obj.description} {mastery_indicator} *({obj.mastery:.0%})*\n")
             
             # References section
-            if state['references_sections']:
+            if state.get('references_sections_resolved'):
                 f.write("\n## 📖 References\n\n")
-                for ref in state['references_sections']:
+                for ref in state.get('references_sections_resolved'):
                     rid = ref.get('rid', 'unknown')
-                    loc = ref.get('loc', '')
+                    loc = ref.get('loc') or ref.get('section') or ''
                     f.write(f"- **{rid}**: {loc}\n")
             
             f.write("\n---\n\n## 💬 Session Transcript\n\n")
@@ -157,7 +157,7 @@ class SessionLogger:
             f.write(f"- **Objectives Taught:** {len(state['completed_objectives'])} / {len(state['objectives_to_teach'])}\n")
             f.write(f"- **Total Messages:** {state['turn_count']}\n")
             
-            if state['force_end_session']:
+            if state['exit_requested']:
                 f.write("\n⚠️ *Session ended early by user request*\n")
             
             f.write(f"\n**Completed:** {datetime.now().isoformat()}\n")
@@ -182,11 +182,11 @@ def calculate_final_score(state: SessionState) -> float:
 
 def calculate_duration(state: SessionState) -> str:
     """Calculate session duration"""
-    if not state['end_time']:
+    if not state['session_end']:
         return "In progress"
     
-    start = datetime.fromisoformat(state['start_time'])
-    end = datetime.fromisoformat(state['end_time'])
+    start = datetime.fromisoformat(state['session_start'])
+    end = datetime.fromisoformat(state['session_end'])
     duration = end - start
     
     minutes = int(duration.total_seconds() / 60)

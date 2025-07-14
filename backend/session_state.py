@@ -1,9 +1,10 @@
+# backend/session_state.py
 """
 Session state definitions for Autodidact v0.4 session engine
 Defines the state that flows through the LangGraph nodes
 """
 
-from typing import TypedDict, List, Dict, Set, Optional, Literal
+from typing import TypedDict, List, Dict, Optional, Literal
 from pydantic import BaseModel
 from datetime import datetime
 
@@ -44,7 +45,7 @@ class TestAnswer(BaseModel):
     timestamp: str
 
 
-class SessionState(TypedDict):
+class SessionState(TypedDict, total=False):
     """Complete state for a learning session"""
     
     # Core identifiers
@@ -55,50 +56,58 @@ class SessionState(TypedDict):
     
     # Node content
     node_title: str
+    project_topic: str
+    references_sections_resolved: List[Dict[str, str]]
     resources: List[Dict]  # Project-level resources
-    references_sections: List[Dict]  # Node-specific references
     
     # Objectives tracking
     all_objectives: List[Objective]  # All objectives for this node
     objectives_to_teach: List[Objective]  # Filtered by mastery < 0.7
     objectives_already_known: List[Objective]  # mastery >= 0.7
     prerequisite_objectives: List[Objective]  # From prerequisite nodes
-    completed_objectives: Set[str]  # IDs of objectives taught this session
+    completed_objectives: List[str]  # IDs of objectives taught this session (changed from Set to List)
     
-    # User interaction
-    current_phase: str  # Which phase we're in
-    messages: List[Dict]  # Chat history [{role, content}]
-    user_chose_quiz: Optional[bool]  # For prereq choice
+    # Runtime / session control
+    current_phase: Literal[
+        "load_context",
+        "intro",
+        "recap",
+        "teaching",
+        "testing",
+        "grading",
+        "wrap",
+    ]
+    objective_idx: int            # index into objectives_to_teach
+    exit_requested: bool          # set by UI to trigger early exit
+    history: List[Dict[str, str]] # chat transcript ({role, content})
     
     # Quiz tracking
-    prereq_quiz_questions: List[QuizQuestion]
-    prereq_quiz_answers: List[TestAnswer]  # User's prereq quiz answers
-    micro_quiz_history: List[Dict]  # Formative assessments
-    final_test_questions: List[QuizQuestion]
-    final_test_answers: List[TestAnswer]
+    final_test_questions: List[str]
+    final_test_answers: List[str]
+    test_question_idx: int
+    awaiting_answer: bool
     
     # Grading
     objective_scores: Dict[str, float]  # Final scores per objective ID
     
-    # Control flags
-    force_end_session: bool  # User requested early end
-    current_objective_index: int  # Which objective we're teaching
-    current_objective_phase: str  # "probe_ask", "probe_respond", "explain_present", "explain_respond", "quiz_ask", or "quiz_evaluate"
-    
     # Metadata
-    domain_level: str  # "basic", "intermediate", or "advanced"
+    # Optional logging & timestamps
+    # ──────────────────────────────────
     turn_count: int
-    start_time: str
-    end_time: Optional[str]
+    session_start: str #datetime str in isoformat
+    last_message_ts: Optional[str] #datetime str in isoformat
+    session_end: Optional[str] #datetime str in isoformat
+
+    navigate_without_user_interaction: Optional[bool]
 
 
 # Helper functions for state management
 
+# FIXME: not sure if this will work after we move off of graph_04
 def create_initial_state(
     session_id: str,
     project_id: str, 
-    node_id: str,
-    domain_level: str = "intermediate"
+    node_id: str
 ) -> Dict:
     """Create an initial session state"""
     return {
@@ -110,48 +119,47 @@ def create_initial_state(
         
         # Node content
         "node_title": "",
+        "project_topic": "",
         "resources": [],
-        "references_sections": [],
+        "references_sections_resolved": [],
         
         # Objectives tracking
         "all_objectives": [],
         "objectives_to_teach": [],
         "objectives_already_known": [],
         "prerequisite_objectives": [],
-        "completed_objectives": set(),
+        "completed_objectives": [],  # Changed from set() to []
         
         # User interaction
-        "current_phase": "loading",
-        "messages": [],
-        "user_chose_quiz": None,
+        "current_phase": "load_context",
+        "objective_idx": 0,
+        "exit_requested": False,
+
+        "history": [],
         
         # Quiz tracking
-        "prereq_quiz_questions": [],
-        "prereq_quiz_answers": [],
-        "micro_quiz_history": [],
         "final_test_questions": [],
         "final_test_answers": [],
+        "test_question_idx": 0,
+        "awaiting_answer": False,
         
         # Grading
         "objective_scores": {},
         
-        # Control flags
-        "force_end_session": False,
-        "current_objective_index": 0,
-        "current_objective_phase": "probe_ask",
+
         
         # Metadata
-        "domain_level": domain_level,
         "turn_count": 0,
-        "start_time": datetime.now().isoformat(),
-        "end_time": None
+        "session_start": datetime.now().isoformat(),
+        "last_message_ts": None,
+        "session_end": None
     }
 
 
 def get_current_objective(state: SessionState) -> Optional[Objective]:
     """Get the current objective being taught"""
-    if state["current_objective_index"] < len(state["objectives_to_teach"]):
-        return state["objectives_to_teach"][state["current_objective_index"]]
+    if state["objective_idx"] < len(state["objectives_to_teach"]):
+        return state["objectives_to_teach"][state["objective_idx"]]
     return None
 
 
@@ -162,12 +170,12 @@ def has_prerequisites(state: SessionState) -> bool:
 
 def all_objectives_completed(state: SessionState) -> bool:
     """Check if all objectives have been taught"""
-    return state["current_objective_index"] >= len(state["objectives_to_teach"])
+    return state["objective_idx"] >= len(state["objectives_to_teach"])
 
 
 def get_objectives_for_testing(state: SessionState) -> List[Objective]:
     """Get objectives that should be included in final test"""
-    if state["force_end_session"]:
+    if state["exit_requested"]:
         # Only test objectives that were actually taught
         return [
             obj for obj in state["objectives_to_teach"]
