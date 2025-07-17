@@ -18,14 +18,29 @@ CONFIG_DIR = Path.home() / f".{APP_NAME}"
 CONFIG_FILE = CONFIG_DIR / ".env.json"
 PROJECTS_DIR = CONFIG_DIR / "projects"
 
-# Deep Research API settings
-DEEP_RESEARCH_MODEL = "o4-mini-deep-research-2025-06-26"
-# DEEP_RESEARCH_MODEL = "o3-deep-research"
-# could maybe use o3-deep-research if we're okay with higher costs for this
-DEEP_RESEARCH_POLL_INTERVAL = 10  # seconds
+# Provider settings
+DEFAULT_PROVIDER = "openai"  # Default to OpenAI for backward compatibility
+SUPPORTED_PROVIDERS = ["openai", "openrouter"]
 
-# LLM settings
-CHAT_MODEL = "gpt-4o-mini"
+# Model configurations per provider
+PROVIDER_MODELS = {
+    "openai": {
+        "deep_research": "o4-mini-deep-research-2025-06-26",
+        # "deep_research_alt": "o3-deep-research",  # Higher cost alternative
+        "chat": "gpt-4o-mini",
+        "base_url": None,  # Use default OpenAI base URL
+    },
+    "openrouter": {
+        "deep_research": "anthropic/claude-3.5-sonnet",  # No deep research equivalent, use best reasoning model
+        "chat": "anthropic/claude-3.5-haiku",
+        "base_url": "https://openrouter.ai/api/v1",
+    }
+}
+
+# Backward compatibility - these will use the default provider
+DEEP_RESEARCH_MODEL = PROVIDER_MODELS[DEFAULT_PROVIDER]["deep_research"]
+CHAT_MODEL = PROVIDER_MODELS[DEFAULT_PROVIDER]["chat"]
+DEEP_RESEARCH_POLL_INTERVAL = 10  # seconds
 
 # Mastery settings
 MASTERY_THRESHOLD = 0.7
@@ -38,35 +53,87 @@ def ensure_config_directory():
     PROJECTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def save_api_key(api_key: str):
-    """Save OpenAI API key to config file"""
+def save_config(config_data: Dict):
+    """Save configuration data to config file"""
     ensure_config_directory()
-    config = {"openai_api_key": api_key}
     
     with open(CONFIG_FILE, 'w') as f:
-        json.dump(config, f)
+        json.dump(config_data, f, indent=2)
     
     # Set file permissions to 600 (rw-------)
     CONFIG_FILE.chmod(0o600)
 
 
-def load_api_key() -> Optional[str]:
-    """Load API key from config file or environment"""
-    # # First check environment variable
-    # api_key = os.environ.get("OPENAI_API_KEY")
-    # if api_key:
-    #     return api_key
+def save_api_key(api_key: str, provider: str = DEFAULT_PROVIDER):
+    """Save API key for a specific provider to config file"""
+    # Load existing config or create new one
+    config = load_config()
     
-    # Then check config file
+    # Set the API key for the provider
+    config[f"{provider}_api_key"] = api_key
+    
+    # If this is the first provider being configured, set it as default
+    if "provider" not in config:
+        config["provider"] = provider
+    
+    save_config(config)
+
+
+def load_config() -> Dict:
+    """Load configuration from config file"""
     if CONFIG_FILE.exists():
         try:
             with open(CONFIG_FILE, 'r') as f:
-                config = json.load(f)
-                return config.get("openai_api_key")
+                return json.load(f)
         except (json.JSONDecodeError, IOError):
             pass
     
-    return None
+    return {}
+
+
+def load_api_key(provider: str = None) -> Optional[str]:
+    """Load API key from config file for a specific provider"""
+    config = load_config()
+    
+    # If no provider specified, use the configured default or system default
+    if provider is None:
+        provider = config.get("provider", DEFAULT_PROVIDER)
+    
+    # Try to get the API key for the specified provider
+    api_key = config.get(f"{provider}_api_key")
+    
+    # Fallback to legacy openai_api_key for backward compatibility
+    if not api_key and provider == "openai":
+        api_key = config.get("openai_api_key")
+    
+    return api_key
+
+
+def get_current_provider() -> str:
+    """Get the currently configured provider"""
+    config = load_config()
+    return config.get("provider", DEFAULT_PROVIDER)
+
+
+def set_current_provider(provider: str):
+    """Set the current provider"""
+    if provider not in SUPPORTED_PROVIDERS:
+        raise ValueError(f"Unsupported provider: {provider}")
+    
+    config = load_config()
+    config["provider"] = provider
+    save_config(config)
+
+
+def get_provider_config(provider: str = None) -> Dict:
+    """Get model configuration for a specific provider"""
+    if provider is None:
+        provider = get_current_provider()
+    
+    if provider not in PROVIDER_MODELS:
+        raise ValueError(f"No configuration found for provider: {provider}")
+    
+    return PROVIDER_MODELS[provider]
 
 
 def get_project_directory(project_id: str) -> Path:
