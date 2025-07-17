@@ -268,8 +268,8 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
     Check job status and update project if complete.
     Returns True if job is complete (either success or failure), False if still processing.
     """
-    from openai import OpenAI
-    from utils.config import load_api_key, save_project_files
+    from utils.providers import create_client
+    from utils.config import save_project_files
     from utils.deep_research import deep_research_output_cleanup
 
     # Sanitize job_id to remove any whitespace or newline characters
@@ -277,15 +277,14 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
     
     print(f"[check_and_complete_job] Checking job {clean_job_id} for project {project_id}")
     
-    api_key = load_api_key()
-    if not api_key:
-        raise ValueError("OpenAI API key not found")
-    
-    client = OpenAI(api_key=api_key)
-    
     try:
-        # Retrieve job status using the cleaned job_id
-        job = client.responses.retrieve(clean_job_id)
+
+        # Create provider-aware client
+        client = create_client()
+        
+        # Retrieve job status
+        job = client.responses.retrieve(job_id)
+
         
         if job.status == "completed":
             print(f"[check_and_complete_job] Job {clean_job_id} completed successfully")
@@ -402,23 +401,21 @@ def check_job(job_id: str) -> bool:
     """
     Check job status and returns result.
     """
-    from openai import OpenAI
-    from utils.config import load_api_key
+    from utils.providers import create_client
 
     # Sanitize job_id to remove any whitespace or newline characters
     clean_job_id = job_id.strip() if job_id else ""
     
     print(f"[check_job] Checking job {clean_job_id}")
     
-    api_key = load_api_key()
-    if not api_key:
-        raise ValueError("OpenAI API key not found")
-    
-    client = OpenAI(api_key=api_key)
-    
     try:
-        # Retrieve job status using the cleaned job_id
-        job = client.responses.retrieve(clean_job_id)
+
+        # Create provider-aware client
+        client = create_client()
+        
+        # Retrieve job status
+        job = client.responses.retrieve(job_id)
+
         return job
     except Exception as e:
         print(f"[check_job] Error checking job: {e}")
@@ -821,8 +818,7 @@ def delete_project(project_id: str) -> bool:
     Returns True if successful, False otherwise.
     """
     import shutil
-    from openai import OpenAI
-    from utils.config import load_api_key
+    from utils.providers import create_client
     
     try:
         # Step 1: Cancel active job if processing
@@ -833,18 +829,16 @@ def delete_project(project_id: str) -> bool:
         if project['status'] == 'processing' and project['job_id']:
             # Cancel the OpenAI job
             api_key = load_api_key()
-            if api_key:
-                client = OpenAI(api_key=api_key)
-                try:
-                    # Sanitize job_id to remove any whitespace or newline characters
-                    clean_job_id = project['job_id'].strip() if project['job_id'] else ""
-                    # FIXME: also cancel the job when we retry with o3?
-                    client.responses.cancel(clean_job_id)
-                    print(f"Cancelled job {clean_job_id} for project {project_id}")
-                except Exception as e:
-                    print(f"Failed to cancel job {project['job_id']}: {e}")
-                    # Continue with deletion anyway
-        
+            try:
+                client = create_client()
+                clean_job_id = project['job_id'].strip() if project['job_id'] else ""
+                # FIXME: also cancel the job when we retry with o3?
+                  client.responses.cancel(clean_job_id)
+                  print(f"Cancelled job {clean_job_id} for project {project_id}")
+            except Exception as e:
+                print(f"Failed to cancel job {project['job_id']}: {e}")
+                # Continue with deletion anyway
+       
         # Step 2: Database deletion in transaction
         with get_db_connection() as conn:
             conn.execute("BEGIN TRANSACTION")

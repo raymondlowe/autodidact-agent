@@ -36,11 +36,16 @@ def retry_with_o3(st, project):
     old_job_response = check_job(old_job_id)
     # print(f"[project_detail.py] Old job result: {old_job_response}")
     reasoning_texts = []
-    for item in old_job_response.output:
-        # print(f"[project_detail.py] Item.type: {item.type}")
-        if item.type == "reasoning":
-            for summary in item.summary:
-                reasoning_texts.append(summary.text)
+    
+    # Check if old_job_response is None (job check failed)
+    if old_job_response is None:
+        print(f"[project_detail.py] Warning: Could not retrieve old job {old_job_id}, proceeding without reasoning texts")
+    elif hasattr(old_job_response, 'output') and old_job_response.output:
+        for item in old_job_response.output:
+            # print(f"[project_detail.py] Item.type: {item.type}")
+            if item.type == "reasoning":
+                for summary in item.summary:
+                    reasoning_texts.append(summary.text)
 
     # FIXME: unsure if we should even do anything with this: combined_text
     # combined_text = "An earlier research model failed partway, here are it's reasoning texts on the same prompt, in case those are useful:" + "\n\n".join(reasoning_texts)
