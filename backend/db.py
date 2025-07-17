@@ -399,18 +399,14 @@ def check_job(job_id: str) -> bool:
     """
     Check job status and returns result.
     """
-    from openai import OpenAI
-    from utils.config import load_api_key
+    from utils.providers import create_client
 
     print(f"[check_job] Checking job {job_id}")
     
-    api_key = load_api_key()
-    if not api_key:
-        raise ValueError("OpenAI API key not found")
-    
-    client = OpenAI(api_key=api_key)
-    
     try:
+        # Create provider-aware client
+        client = create_client()
+        
         # Retrieve job status
         job = client.responses.retrieve(job_id)
         return job
