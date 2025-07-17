@@ -9,8 +9,8 @@ import time
 from typing import Dict, List, Optional
 import openai
 from openai import OpenAI
-from utils.config import load_api_key
-from utils.providers import create_client, get_model_for_task, ProviderError
+from utils.config import load_api_key, get_current_provider
+from utils.providers import create_client, get_model_for_task, get_provider_info, ProviderError
 from utils.deep_research import TOPIC_CLARIFYING_PROMPT, TOPIC_REWRITING_PROMPT
 
 
@@ -384,7 +384,6 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
         print(f"[start_deep_research_job] Using model: {research_model}")
         
         # Check if this provider supports deep research features
-        from utils.providers import get_provider_info
         provider_info = get_provider_info(current_provider)
         supports_deep_research = provider_info.get("supports_deep_research", False)
         
