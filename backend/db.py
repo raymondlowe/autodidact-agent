@@ -283,7 +283,7 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
         client = create_client()
         
         # Retrieve job status
-        job = client.responses.retrieve(job_id)
+        job = client.responses.retrieve(clean_job_id)
 
         
         if job.status == "completed":
@@ -414,7 +414,7 @@ def check_job(job_id: str) -> bool:
         client = create_client()
         
         # Retrieve job status
-        job = client.responses.retrieve(job_id)
+        job = client.responses.retrieve(clean_job_id)
 
         return job
     except Exception as e:
