@@ -42,7 +42,12 @@ streamlit run app.py
 
 ## Setup
 
-On first run, you'll need to provide your OpenAI API key. The app will guide you through this process and store your key securely at `~/.autodidact/.env.json`.
+On first run, you'll need to choose an AI provider and provide your API key. The app supports:
+
+- **OpenAI**: Full features including deep research with web search
+- **OpenRouter**: Access to multiple models (Claude, Gemini, etc.) without deep research
+
+The app will guide you through the setup process and store your configuration securely at `~/.autodidact/.env.json`.
 
 ## Database Schema
 
@@ -64,6 +69,25 @@ python backend/migrate_db.py
 ```
 
 This will update your database schema to include the new session tracking features.
+
+## AI Provider Options
+
+Autodidact supports multiple AI providers to give you flexibility in model choice and cost:
+
+### OpenAI
+- **Features**: Full deep research with web search, GPT models
+- **Best for**: Comprehensive learning plans with real-time research
+- **Models**: GPT-4o-mini (chat), o4-mini-deep-research (research)
+- **Cost**: ~$0.50-2.00 per research session, $0.02-0.05 per tutoring session
+
+### OpenRouter  
+- **Features**: Access to Claude, Gemini, and other top models
+- **Best for**: High-quality conversations with diverse model options
+- **Models**: Claude 3.5 Sonnet/Haiku, Gemini, and many others
+- **Cost**: Varies by model, typically $0.001-0.05 per request
+- **Note**: Uses regular chat completion instead of deep research mode
+
+You can switch providers anytime in Settings and configure API keys for multiple providers.
 
 ## Usage
 
@@ -101,7 +125,9 @@ To contribute or modify Autodidact:
 ## Requirements
 
 - Python 3.8+
-- OpenAI API key
+- API key from a supported provider:
+  - **OpenAI**: For full deep research capabilities
+  - **OpenRouter**: For access to multiple AI models (Claude, Gemini, etc.)
 
 ## License
 
