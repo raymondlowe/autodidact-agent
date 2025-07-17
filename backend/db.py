@@ -833,8 +833,8 @@ def delete_project(project_id: str) -> bool:
                 client = create_client()
                 clean_job_id = project['job_id'].strip() if project['job_id'] else ""
                 # FIXME: also cancel the job when we retry with o3?
-                  client.responses.cancel(clean_job_id)
-                  print(f"Cancelled job {clean_job_id} for project {project_id}")
+                client.responses.cancel(clean_job_id)
+                print(f"Cancelled job {clean_job_id} for project {project_id}")
             except Exception as e:
                 print(f"Failed to cancel job {project['job_id']}: {e}")
                 # Continue with deletion anyway
