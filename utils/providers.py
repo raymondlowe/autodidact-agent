@@ -71,10 +71,42 @@ def get_model_for_task(task: str, provider: str = None) -> str:
     
     config = get_provider_config(provider)
     
+    # Check for custom overrides first
+    from utils.config import get_custom_better_models
+    custom_models = get_custom_better_models(provider)
+    if task in custom_models:
+        return custom_models[task]
+    
     if task not in config:
         raise ProviderError(f"Task '{task}' not supported for provider '{provider}'")
     
     return config[task]
+
+
+def get_better_model_for_task(task: str, provider: str = None) -> str:
+    """
+    Get the better model for a specific task for retry scenarios.
+    
+    Args:
+        task: Task type ("deep_research", "chat", etc.)
+        provider: Provider name. If None, uses current provider.
+        
+    Returns:
+        Better model name for the specified task
+    """
+    if provider is None:
+        provider = get_current_provider()
+    
+    # Check for custom overrides first
+    from utils.config import get_custom_better_models
+    custom_models = get_custom_better_models(provider)
+    better_task = f"{task}_better"
+    if better_task in custom_models:
+        return custom_models[better_task]
+    
+    # Use the config-based better model
+    from utils.config import get_better_model_for_task as config_get_better
+    return config_get_better(task, provider)
 
 
 def validate_api_key(api_key: str, provider: str) -> bool:

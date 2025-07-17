@@ -157,6 +157,108 @@ else:
                         st.error(f"❌ Invalid API key for {provider_info.get('name', current_provider)}")
             else:
                 st.error(f"Please enter a valid {provider_info.get('name', current_provider)} API key (should start with '{prefix}')")
+
+# Model Configuration section (only show if API key is configured)
+if current_key:
+    st.markdown("---")
+    st.markdown(f"## 🧠 Model Configuration")
+    
+    st.markdown("Configure which models to use for normal research and \"retry with better model\" scenarios.")
+    
+    from utils.providers import get_model_for_task, get_better_model_for_task
+    from utils.config import set_better_model_for_task, get_custom_better_models
+    
+    # Get current models
+    try:
+        current_deep_research = get_model_for_task("deep_research", current_provider)
+        current_better_deep_research = get_better_model_for_task("deep_research", current_provider)
+        current_chat = get_model_for_task("chat", current_provider)
+        current_better_chat = get_better_model_for_task("chat", current_provider)
+    except Exception as e:
+        st.error(f"Error loading model configuration: {e}")
+        current_deep_research = "Unknown"
+        current_better_deep_research = "Unknown"
+        current_chat = "Unknown"
+        current_better_chat = "Unknown"
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("### Current Models")
+        st.code(f"Deep Research: {current_deep_research}")
+        st.code(f"Chat: {current_chat}")
+    
+    with col2:
+        st.markdown("### Better Models (for retry)")
+        st.code(f"Deep Research: {current_better_deep_research}")
+        st.code(f"Chat: {current_better_chat}")
+    
+    # Model customization
+    with st.expander("🛠️ Customize Better Models"):
+        st.markdown("You can override the default \"better models\" used when retrying with a better model.")
+        
+        # Get custom models
+        custom_models = get_custom_better_models(current_provider)
+        
+        with st.form("model_config"):
+            st.markdown("#### Better Model for Deep Research")
+            new_better_deep_research = st.text_input(
+                "Model ID:",
+                value=custom_models.get("deep_research_better", current_better_deep_research),
+                help="Enter the model ID for better deep research (e.g., 'o3-deep-research' for OpenAI or 'deepseek/deepseek-r1-0528' for OpenRouter)"
+            )
+            
+            st.markdown("#### Better Model for Chat")
+            new_better_chat = st.text_input(
+                "Model ID:",
+                value=custom_models.get("chat_better", current_better_chat),
+                help="Enter the model ID for better chat responses"
+            )
+            
+            col1_form, col2_form = st.columns(2)
+            with col1_form:
+                if st.form_submit_button("💾 Save Model Configuration", type="primary"):
+                    try:
+                        if new_better_deep_research != current_better_deep_research:
+                            set_better_model_for_task("deep_research", new_better_deep_research, current_provider)
+                        if new_better_chat != current_better_chat:
+                            set_better_model_for_task("chat", new_better_chat, current_provider)
+                        st.success("✅ Model configuration updated!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error saving configuration: {e}")
+            
+            with col2_form:
+                if st.form_submit_button("🔄 Reset to Defaults"):
+                    try:
+                        # Clear custom configurations
+                        from utils.config import load_config, save_config
+                        config = load_config()
+                        custom_models_key = f"{current_provider}_custom_better_models"
+                        if custom_models_key in config:
+                            del config[custom_models_key]
+                            save_config(config)
+                        st.success("✅ Reset to default model configuration!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error resetting configuration: {e}")
+        
+        # Model recommendations based on provider
+        st.markdown("#### 💡 Recommended Better Models")
+        if current_provider == "openai":
+            st.info("""
+            **For OpenAI:**
+            - Deep Research Better: `o3-deep-research` (higher cost but better reasoning)
+            - Chat Better: `gpt-4o` (more capable than gpt-4o-mini)
+            """)
+        elif current_provider == "openrouter":
+            st.info("""
+            **For OpenRouter:**
+            - Deep Research Better: `deepseek/deepseek-r1-0528` (excellent reasoning), `deepseek/deepseek-r1` (latest), or `anthropic/claude-3.5-sonnet`
+            - Chat Better: `anthropic/claude-3.5-sonnet` (more capable than haiku)
+            
+            **Other good options:** `kimi/k2-large`, `qwen/qwen-2.5-72b-instruct`
+            """)
     
     with col2:
         st.link_button(

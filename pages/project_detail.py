@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 # Get project ID from URL or session state
 project_id = st.query_params.get("project_id")
 
-def retry_with_o3(st, project):
+def retry_with_better_model(st, project):
     print(f"[project_detail.py] Project: {project}")
     old_job_id = project['job_id']
     old_job_response = check_job(old_job_id)
@@ -58,7 +58,12 @@ def retry_with_o3(st, project):
     else:
         hours = 5
 
-    model_to_use_now = "o3"
+    # Import the better model function
+    from utils.providers import get_better_model_for_task
+    
+    # Get the better model for deep research
+    model_to_use_now = get_better_model_for_task("deep_research")
+    print(f"[project_detail.py] Using better model: {model_to_use_now}")
 
     new_job_id = start_deep_research_job(project['topic'], hours, combined_text, model_to_use_now)
     print(f"[project_detail.py] New Job ID: {new_job_id}")
@@ -139,8 +144,18 @@ if project['status'] == 'processing' and project['job_id']:
 
                 if project['model_used'] != "o3":
                     # this is a hack to get the user to retry with o3 if the job is taking too long
-                    if st.button("Taking too long? Retry with o3", type="primary"):
-                        retry_with_o3(st, project)
+                    # Import here to get the better model name for display
+                    from utils.providers import get_better_model_for_task, get_current_provider
+                    from utils.config import get_current_provider as get_provider
+                    try:
+                        better_model = get_better_model_for_task("deep_research")
+                        provider = get_provider()
+                        button_text = f"Taking too long? Retry with {better_model.split('/')[-1] if '/' in better_model else better_model}"
+                    except:
+                        button_text = "Taking too long? Retry with better model"
+                    
+                    if st.button(button_text, type="primary"):
+                        retry_with_better_model(st, project)
                 
                 # Auto-refresh
                 time.sleep(10)
@@ -161,8 +176,16 @@ elif project['status'] == 'failed':
     
     col1, col2, col3 = st.columns(3)
     with col1:
-        if st.button("Retry with o3", type="primary"):
-            retry_with_o3(st, project)
+        # Import here to get the better model name for display
+        from utils.providers import get_better_model_for_task
+        try:
+            better_model = get_better_model_for_task("deep_research")
+            button_text = f"Retry with {better_model.split('/')[-1] if '/' in better_model else better_model}"
+        except:
+            button_text = "Retry with better model"
+            
+        if st.button(button_text, type="primary"):
+            retry_with_better_model(st, project)
     with col2:
         if st.button("➕ Create New Project", type="primary"):
             st.switch_page("pages/new_project.py")

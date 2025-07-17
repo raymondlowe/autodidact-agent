@@ -26,13 +26,16 @@ SUPPORTED_PROVIDERS = ["openai", "openrouter"]
 PROVIDER_MODELS = {
     "openai": {
         "deep_research": "o4-mini-deep-research-2025-06-26",
-        # "deep_research_alt": "o3-deep-research",  # Higher cost alternative
+        "deep_research_better": "o3-deep-research",  # Better model for retry
         "chat": "gpt-4o-mini",
+        "chat_better": "gpt-4o",  # Better model for retry
         "base_url": None,  # Use default OpenAI base URL
     },
     "openrouter": {
         "deep_research": "anthropic/claude-3.5-sonnet",  # No deep research equivalent, use best reasoning model
+        "deep_research_better": "deepseek/deepseek-r1-0528",  # Better reasoning model for retry
         "chat": "anthropic/claude-3.5-haiku",
+        "chat_better": "anthropic/claude-3.5-sonnet",  # Better model for retry
         "base_url": "https://openrouter.ai/api/v1",
     }
 }
@@ -134,6 +137,48 @@ def get_provider_config(provider: str = None) -> Dict:
         raise ValueError(f"No configuration found for provider: {provider}")
     
     return PROVIDER_MODELS[provider]
+
+
+def get_better_model_for_task(task: str, provider: str = None) -> str:
+    """Get the better model for a specific task for retry scenarios"""
+    if provider is None:
+        provider = get_current_provider()
+    
+    config = get_provider_config(provider)
+    better_task = f"{task}_better"
+    
+    if better_task not in config:
+        # Fallback to regular model if no better model configured
+        return config.get(task, config.get("chat"))
+    
+    return config[better_task]
+
+
+def set_better_model_for_task(task: str, model: str, provider: str = None):
+    """Set the better model for a specific task"""
+    if provider is None:
+        provider = get_current_provider()
+    
+    # Load current config
+    config = load_config()
+    
+    # Store custom better model configuration
+    custom_models_key = f"{provider}_custom_better_models"
+    if custom_models_key not in config:
+        config[custom_models_key] = {}
+    
+    config[custom_models_key][f"{task}_better"] = model
+    save_config(config)
+
+
+def get_custom_better_models(provider: str = None) -> Dict:
+    """Get custom better model configurations"""
+    if provider is None:
+        provider = get_current_provider()
+    
+    config = load_config()
+    custom_models_key = f"{provider}_custom_better_models"
+    return config.get(custom_models_key, {})
 
 
 def get_project_directory(project_id: str) -> Path:
