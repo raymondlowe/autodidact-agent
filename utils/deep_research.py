@@ -15,24 +15,8 @@ from utils.providers import create_client, get_model_for_task, get_current_provi
 import jsonschema, networkx as nx, Levenshtein
 
 
-def clean_job_id(job_id: str) -> str:
-    """
-    Clean job_id by removing all control characters including newlines, tabs, etc.
-    
-    Args:
-        job_id: The raw job ID that may contain control characters
-        
-    Returns:
-        Cleaned job ID with all control characters removed
-    """
-    if not job_id:
-        return ""
-    
-    # Remove all control characters including \n, \r, \t, \f, \v, \0
-    # Keep only printable ASCII characters and spaces
-    cleaned = re.sub(r'[\r\n\t\f\v\0]', '', job_id.strip())
-    
-    return cleaned
+# Import the cleaning functions from db module
+from backend.db import clean_job_id, clean_api_text
 
 # After we get the user's topic & time investment preferences, this prompt is used to ask clarifying questions to the user
 TOPIC_CLARIFYING_PROMPT = """
@@ -263,7 +247,8 @@ def guardian_fixer(raw_json_str, error_bullets, client, high_model=False):
             )
         elapsed = time.perf_counter() - start
         print(f"Guardian pass finished in {elapsed:.2f} s")
-        return resp.output_text
+        # Clean the API response text
+        return clean_api_text(resp.output_text)
     else:
         # For other providers or low model, use regular chat completion
         chat_model = get_model_for_task("chat")
@@ -276,7 +261,8 @@ def guardian_fixer(raw_json_str, error_bullets, client, high_model=False):
         )
         elapsed = time.perf_counter() - start
         print(f"Guardian pass finished in {elapsed:.2f} s")
-        return resp.choices[0].message.content
+        # Clean the API response text
+        return clean_api_text(resp.choices[0].message.content)
 
 def deep_research_output_cleanup(raw_json_str, client):
     # lint and if error, passes to higher model to fix

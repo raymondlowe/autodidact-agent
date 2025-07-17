@@ -24,22 +24,49 @@ DB_PATH = Path.home() / '.autodidact' / 'autodidact.db'
 
 def clean_job_id(job_id: str) -> str:
     """
-    Clean job_id by removing all control characters including newlines, tabs, etc.
+    Aggressively clean job_id by allowing only safe alphanumeric characters.
+    OpenRouter and other API providers can return job IDs with embedded control characters.
     
     Args:
         job_id: The raw job ID that may contain control characters
         
     Returns:
-        Cleaned job ID with all control characters removed
+        Cleaned job ID with only safe characters (alphanumeric, dash, underscore)
     """
     if not job_id:
         return ""
     
-    # Remove all control characters including \n, \r, \t, \f, \v, \0
-    # Keep only printable ASCII characters and spaces
-    cleaned = re.sub(r'[\r\n\t\f\v\0]', '', job_id.strip())
+    # Be aggressive: only allow alphanumeric characters, dashes, and underscores
+    # This removes ALL control characters, whitespace, and special symbols
+    cleaned = re.sub(r'[^a-zA-Z0-9\-_]', '', str(job_id))
     
     return cleaned
+
+
+def clean_api_text(text: str) -> str:
+    """
+    Clean text content from API responses by removing control characters.
+    API providers like OpenRouter can include embedded control characters in responses.
+    
+    Args:
+        text: Raw text from API response
+        
+    Returns:
+        Cleaned text with control characters removed but preserving readability
+    """
+    if not text:
+        return ""
+    
+    # Remove control characters but preserve normal whitespace and printable chars
+    # Keep spaces, tabs, and newlines for readability, but remove other control chars
+    cleaned = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', str(text))
+    
+    # Only strip if the result would not be empty whitespace
+    # This preserves cases where the text is intentionally just whitespace
+    if cleaned.strip():
+        return cleaned.strip()
+    else:
+        return cleaned
 
 
 def ensure_db_directory():
@@ -311,6 +338,8 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
             print(f"[check_and_complete_job] Job {clean_job_id_value} completed successfully")
 
             json_str = job.output_text
+            # Clean the output text from API to remove any control characters
+            json_str = clean_api_text(json_str)
             
             # TODO: remove this after confirming that job.output_text works in all cases
             # # Extract the result

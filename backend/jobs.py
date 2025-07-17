@@ -92,8 +92,11 @@ def clarify_topic(topic: str, hours: Optional[int] = None) -> List[str]:
         print("[clarify_topic] Making API call...")
         response = retry_api_call(make_clarifier_call)
         
-        # Extract the response content
-        questions_text = response.choices[0].message.content.strip()
+        # Extract the response content and clean it
+        questions_text = response.choices[0].message.content
+        # Clean API response text to remove any control characters
+        from backend.db import clean_api_text
+        questions_text = clean_api_text(questions_text)
         print(f"[clarify_topic] Raw response:\n{questions_text}")
         
         # Parse the questions from the response
@@ -187,8 +190,11 @@ Clarifying questions:
         print("[rewrite_topic] Making API call...")
         response = retry_api_call(make_rewriter_call)
         
-        # Extract the rewritten topic
-        rewritten_topic = response.choices[0].message.content.strip()
+        # Extract the rewritten topic and clean it
+        rewritten_topic = response.choices[0].message.content
+        # Clean API response text to remove any control characters
+        from backend.db import clean_api_text
+        rewritten_topic = clean_api_text(rewritten_topic)
         print(f"[rewrite_topic] Rewritten topic:\n{rewritten_topic}")
         
         return rewritten_topic
@@ -247,7 +253,9 @@ def process_clarification_responses(questions: List[str], responses: List[str]) 
             )
         
         response = retry_api_call(make_refinement_call)
-        return response.choices[0].message.content.strip()
+        # Clean API response text to remove any control characters
+        from backend.db import clean_api_text
+        return clean_api_text(response.choices[0].message.content)
         
     except Exception as e:
         raise RuntimeError(f"Failed to process clarification responses: {e}")
@@ -448,8 +456,10 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
                 temperature=0.7
             )
             
-            # Return the response content directly since we can't do background jobs
-            return response.choices[0].message.content
+            # Clean the response content before returning
+            from backend.db import clean_api_text
+            content = clean_api_text(response.choices[0].message.content)
+            return content
         
     except openai.AuthenticationError:
         print("[start_deep_research_job] ERROR: Authentication failed")
