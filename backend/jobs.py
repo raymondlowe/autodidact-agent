@@ -430,9 +430,12 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
             )
             
             job_id = resp.id
-            print(f"[start_deep_research_job] Job submitted successfully with ID: {job_id}")
+            # Clean the job ID in case it contains control characters
+            from backend.db import clean_job_id
+            cleaned_job_id = clean_job_id(job_id)
+            print(f"[start_deep_research_job] Job submitted successfully with ID: {cleaned_job_id}")
             
-            return job_id
+            return cleaned_job_id
         else:
             # For other providers, use regular chat completion
             print("[start_deep_research_job] Using regular chat completion for research...")

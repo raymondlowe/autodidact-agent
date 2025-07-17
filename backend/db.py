@@ -6,6 +6,7 @@ Handles SQLite database operations with direct SQL (no ORM)
 import sqlite3
 import json
 import uuid
+import re
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Any
 from contextlib import contextmanager
@@ -19,6 +20,26 @@ logger = logging.getLogger(__name__)
 # Constants
 MASTERY_THRESHOLD = 0.7
 DB_PATH = Path.home() / '.autodidact' / 'autodidact.db'
+
+
+def clean_job_id(job_id: str) -> str:
+    """
+    Clean job_id by removing all control characters including newlines, tabs, etc.
+    
+    Args:
+        job_id: The raw job ID that may contain control characters
+        
+    Returns:
+        Cleaned job ID with all control characters removed
+    """
+    if not job_id:
+        return ""
+    
+    # Remove all control characters including \n, \r, \t, \f, \v, \0
+    # Keep only printable ASCII characters and spaces
+    cleaned = re.sub(r'[\r\n\t\f\v\0]', '', job_id.strip())
+    
+    return cleaned
 
 
 def ensure_db_directory():
@@ -272,10 +293,10 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
     from utils.config import save_project_files
     from utils.deep_research import deep_research_output_cleanup
 
-    # Sanitize job_id to remove any whitespace or newline characters
-    clean_job_id = job_id.strip() if job_id else ""
+    # Clean job_id to remove any control characters including embedded newlines
+    clean_job_id_value = clean_job_id(job_id)
     
-    print(f"[check_and_complete_job] Checking job {clean_job_id} for project {project_id}")
+    print(f"[check_and_complete_job] Checking job {clean_job_id_value} for project {project_id}")
     
     try:
 
@@ -283,11 +304,11 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
         client = create_client()
         
         # Retrieve job status
-        job = client.responses.retrieve(clean_job_id)
+        job = client.responses.retrieve(clean_job_id_value)
 
         
         if job.status == "completed":
-            print(f"[check_and_complete_job] Job {clean_job_id} completed successfully")
+            print(f"[check_and_complete_job] Job {clean_job_id_value} completed successfully")
 
             json_str = job.output_text
             
@@ -378,18 +399,18 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
             return True
             
         elif job.status == "failed":
-            print(f"[check_and_complete_job] Job {clean_job_id} failed")
+            print(f"[check_and_complete_job] Job {clean_job_id_value} failed")
             update_project_status(project_id, 'failed')
             return True
             
         elif job.status == "cancelled":
-            print(f"[check_and_complete_job] Job {clean_job_id} was cancelled")
+            print(f"[check_and_complete_job] Job {clean_job_id_value} was cancelled")
             update_project_status(project_id, 'failed')
             return True
             
         else: # in_progress, queued, incomplete
             # Still processing
-            print(f"[check_and_complete_job] Job {clean_job_id} still processing (status: {job.status})")
+            print(f"[check_and_complete_job] Job {clean_job_id_value} still processing (status: {job.status})")
             return False
             
     except Exception as e:
@@ -403,10 +424,10 @@ def check_job(job_id: str) -> bool:
     """
     from utils.providers import create_client
 
-    # Sanitize job_id to remove any whitespace or newline characters
-    clean_job_id = job_id.strip() if job_id else ""
+    # Clean job_id to remove any control characters including embedded newlines
+    clean_job_id_value = clean_job_id(job_id)
     
-    print(f"[check_job] Checking job {clean_job_id}")
+    print(f"[check_job] Checking job {clean_job_id_value}")
     
     try:
 
@@ -414,7 +435,7 @@ def check_job(job_id: str) -> bool:
         client = create_client()
         
         # Retrieve job status
-        job = client.responses.retrieve(clean_job_id)
+        job = client.responses.retrieve(clean_job_id_value)
 
         return job
     except Exception as e:
@@ -831,10 +852,10 @@ def delete_project(project_id: str) -> bool:
             api_key = load_api_key()
             try:
                 client = create_client()
-                clean_job_id = project['job_id'].strip() if project['job_id'] else ""
+                clean_job_id_value = clean_job_id(project['job_id'])
                 # FIXME: also cancel the job when we retry with o3?
-                client.responses.cancel(clean_job_id)
-                print(f"Cancelled job {clean_job_id} for project {project_id}")
+                client.responses.cancel(clean_job_id_value)
+                print(f"Cancelled job {clean_job_id_value} for project {project_id}")
             except Exception as e:
                 print(f"Failed to cancel job {project['job_id']}: {e}")
                 # Continue with deletion anyway

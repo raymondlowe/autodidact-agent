@@ -5,6 +5,7 @@ Refactored from 02-topic-then-deep-research.py
 
 import json
 import time
+import re
 from typing import Dict, Optional
 import openai
 from openai import OpenAI
@@ -12,6 +13,26 @@ from utils.config import DEEP_RESEARCH_POLL_INTERVAL
 from utils.providers import create_client, get_model_for_task, get_current_provider, get_provider_info
 
 import jsonschema, networkx as nx, Levenshtein
+
+
+def clean_job_id(job_id: str) -> str:
+    """
+    Clean job_id by removing all control characters including newlines, tabs, etc.
+    
+    Args:
+        job_id: The raw job ID that may contain control characters
+        
+    Returns:
+        Cleaned job ID with all control characters removed
+    """
+    if not job_id:
+        return ""
+    
+    # Remove all control characters including \n, \r, \t, \f, \v, \0
+    # Keep only printable ASCII characters and spaces
+    cleaned = re.sub(r'[\r\n\t\f\v\0]', '', job_id.strip())
+    
+    return cleaned
 
 # After we get the user's topic & time investment preferences, this prompt is used to ask clarifying questions to the user
 TOPIC_CLARIFYING_PROMPT = """
@@ -116,15 +137,15 @@ TASK 3 - CONSOLIDATE AND RETURN FINAL VALID JSON
 
 def poll_background_job(client: OpenAI, job_id: str) -> Dict:
     """Poll until a background deep-research job is complete."""
-    # Sanitize job_id to remove any whitespace or newline characters
-    clean_job_id = job_id.strip() if job_id else ""
+    # Clean job_id to remove any control characters including embedded newlines
+    clean_job_id_value = clean_job_id(job_id)
     
     while True:
-        job = client.responses.retrieve(clean_job_id)
+        job = client.responses.retrieve(clean_job_id_value)
         status = job.status
         if status in ("completed", "failed", "cancelled", "expired"):
             return job
-        print(f"[{time.strftime('%H:%M:%S')}] Job {clean_job_id} → {status} …")
+        print(f"[{time.strftime('%H:%M:%S')}] Job {clean_job_id_value} → {status} …")
         time.sleep(DEEP_RESEARCH_POLL_INTERVAL)
 
 
