@@ -116,12 +116,15 @@ TASK 3 - CONSOLIDATE AND RETURN FINAL VALID JSON
 
 def poll_background_job(client: OpenAI, job_id: str) -> Dict:
     """Poll until a background deep-research job is complete."""
+    # Sanitize job_id to remove any whitespace or newline characters
+    clean_job_id = job_id.strip() if job_id else ""
+    
     while True:
-        job = client.responses.retrieve(job_id)
+        job = client.responses.retrieve(clean_job_id)
         status = job.status
         if status in ("completed", "failed", "cancelled", "expired"):
             return job
-        print(f"[{time.strftime('%H:%M:%S')}] Job {job_id} → {status} …")
+        print(f"[{time.strftime('%H:%M:%S')}] Job {clean_job_id} → {status} …")
         time.sleep(DEEP_RESEARCH_POLL_INTERVAL)
 
 
