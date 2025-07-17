@@ -9,7 +9,8 @@ import time
 from typing import Dict, List, Optional
 import openai
 from openai import OpenAI
-from utils.config import CHAT_MODEL, load_api_key
+from utils.config import load_api_key
+from utils.providers import create_client, get_model_for_task, ProviderError
 from utils.deep_research import TOPIC_CLARIFYING_PROMPT, TOPIC_REWRITING_PROMPT
 
 
@@ -62,27 +63,25 @@ def clarify_topic(topic: str, hours: Optional[int] = None) -> List[str]:
     if hours:
         print(f"[clarify_topic] User wants to invest {hours} hours")
     
-    # Get API key
-    api_key = load_api_key()
-    if not api_key:
-        raise ValueError("OpenAI API key not found. Please configure your API key in the sidebar.")
-    
-    # Create client
-    client = OpenAI(api_key=api_key)
+    # Create client using provider abstraction
+    try:
+        client = create_client()
+    except ProviderError as e:
+        raise ValueError(f"Provider configuration error: {str(e)}")
     
     # Prepare user message
     user_msg = f"Topic: {topic}"
     if hours:
         user_msg += f"\nTime investment: {hours} hours"
     
-    print(f"[clarify_topic] Using model: gpt-4o")
+    print(f"[clarify_topic] Using model: {get_model_for_task('chat')}")
     print(f"[clarify_topic] User message: {user_msg}")
     
     try:
-        # Call OpenAI API with retry logic
+        # Call API with retry logic using chat model
         def make_clarifier_call():
             return client.chat.completions.create(
-                model="gpt-4o",  # Using gpt-4o as requested
+                model=get_model_for_task("chat"),  # Use provider-specific chat model
                 messages=[
                     {"role": "system", "content": TOPIC_CLARIFYING_PROMPT},
                     {"role": "user", "content": user_msg}
@@ -126,10 +125,13 @@ def clarify_topic(topic: str, hours: Optional[int] = None) -> List[str]:
         
     except openai.AuthenticationError:
         print("[clarify_topic] ERROR: Authentication failed")
-        raise RuntimeError("Invalid API key. Please check your OpenAI API key.")
+        raise RuntimeError("Invalid API key. Please check your API key configuration.")
     except openai.PermissionDeniedError:
         print("[clarify_topic] ERROR: Permission denied")
         raise RuntimeError("API key doesn't have access to the required model.")
+    except ProviderError as e:
+        print(f"[clarify_topic] ERROR: Provider error: {str(e)}")
+        raise RuntimeError(f"Provider configuration error: {str(e)}")
     except Exception as e:
         print(f"[clarify_topic] ERROR: {type(e).__name__}: {str(e)}")
         raise RuntimeError(f"Clarifier API call failed: {str(e)}")
@@ -152,12 +154,11 @@ def rewrite_topic(initial_topic: str, questions: List[str], user_answers: str) -
     print(f"[rewrite_topic] Number of questions: {len(questions)}")
     print(f"[rewrite_topic] User answers length: {len(user_answers)} chars")
     
-    # Get API key and create client
-    api_key = load_api_key()
-    if not api_key:
-        raise ValueError("OpenAI API key not found")
-    
-    client = OpenAI(api_key=api_key)
+    # Create client using provider abstraction
+    try:
+        client = create_client()
+    except ProviderError as e:
+        raise ValueError(f"Provider configuration error: {str(e)}")
     
     # Format the content for the rewriting prompt
     formatted_content = f"""Initial topic: {initial_topic}
@@ -170,12 +171,12 @@ Clarifying questions:
     formatted_content += f"\nUser's responses:\n{user_answers}"
     
     print(f"[rewrite_topic] Formatted content for API:\n{formatted_content}")
-    print(f"[rewrite_topic] Using model: gpt-4o")
+    print(f"[rewrite_topic] Using model: {get_model_for_task('chat')}")
     
     try:
         def make_rewriter_call():
             return client.chat.completions.create(
-                model="gpt-4o",  # Using gpt-4o as requested
+                model=get_model_for_task("chat"),  # Use provider-specific chat model
                 messages=[
                     {"role": "system", "content": TOPIC_REWRITING_PROMPT},
                     {"role": "user", "content": formatted_content}
@@ -216,12 +217,11 @@ def process_clarification_responses(questions: List[str], responses: List[str]) 
     if not valid_responses:
         return None  # No valid responses, use original topic
     
-    # Get API key and create client
-    api_key = load_api_key()
-    if not api_key:
-        raise ValueError("OpenAI API key not found")
-    
-    client = OpenAI(api_key=api_key)
+    # Create client using provider abstraction
+    try:
+        client = create_client()
+    except ProviderError as e:
+        raise ValueError(f"Provider configuration error: {str(e)}")
     
     # Create prompt to refine topic based on responses
     refinement_prompt = """
@@ -238,7 +238,7 @@ def process_clarification_responses(questions: List[str], responses: List[str]) 
     try:
         def make_refinement_call():
             return client.chat.completions.create(
-                model=CHAT_MODEL,
+                model=get_model_for_task("chat"),
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that refines learning topics based on user input."},
                     {"role": "user", "content": refinement_prompt.format(qa_text=qa_text)}
@@ -361,22 +361,37 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
     if hours:
         print(f"[start_deep_research_job] Hours: {hours}")
     
-    # Get API key and create client
-    api_key = load_api_key()
-    if not api_key:
-        raise ValueError("OpenAI API key not found. Please configure your API key.")
-    
-    client = OpenAI(api_key=api_key)
+    # Create client using provider abstraction
+    try:
+        client = create_client()
+        current_provider = get_current_provider()
+    except ProviderError as e:
+        raise ValueError(f"Provider configuration error: {str(e)}")
     
     try:
-        # Import the DEVELOPER_PROMPT and model from deep_research module
-        from utils.deep_research import DEVELOPER_PROMPT, DEEP_RESEARCH_MODEL
-
-        research_model = research_model or DEEP_RESEARCH_MODEL
+        # Import the DEVELOPER_PROMPT from deep_research module
+        from utils.deep_research import DEVELOPER_PROMPT
+        
+        # Get the appropriate model for deep research
+        try:
+            research_model = research_model or get_model_for_task("deep_research")
+        except ProviderError:
+            # Fallback to chat model if deep research not available
+            print(f"[start_deep_research_job] Deep research model not available for {current_provider}, using chat model")
+            research_model = research_model or get_model_for_task("chat")
+        
+        print(f"[start_deep_research_job] Using provider: {current_provider}")
         print(f"[start_deep_research_job] Using model: {research_model}")
         
+        # Check if this provider supports deep research features
+        from utils.providers import get_provider_info
+        provider_info = get_provider_info(current_provider)
+        supports_deep_research = provider_info.get("supports_deep_research", False)
+        
+        if not supports_deep_research:
+            print(f"[start_deep_research_job] Warning: {current_provider} does not support OpenAI-style deep research. Using regular chat completion.")
+        
         # Prepare the user message with optional hours
-        # FIXME: I think it is getting confused between the hours and target_nodes
         user_message = f"Topic: {topic}"
         if hours:
             user_message += f"\n\nTime user wants to invest to study: {hours} hours"
@@ -389,53 +404,71 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
         
         print(f"[start_deep_research_job] User message: {user_message}")
         
-        # Build input messages
-        input_messages = [
-            {
-                "role": "developer",
-                "content": [{"type": "input_text", "text": DEVELOPER_PROMPT}]
-            },
-            {
-                "role": "user",
-                "content": [{"type": "input_text", "text": user_message}]
-            }
-        ]
+        # For providers that support deep research (OpenAI), use the full format
+        if supports_deep_research:
+            # Build input messages for deep research
+            input_messages = [
+                {
+                    "role": "developer",
+                    "content": [{"type": "input_text", "text": DEVELOPER_PROMPT}]
+                },
+                {
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": user_message}]
+                }
+            ]
 
-        # Tools configuration
-        tools = [{"type": "web_search_preview"}]
-        
-        print("[start_deep_research_job] Submitting deep-research job...")
-        resp = client.responses.create(
-            model=research_model,
-            background=True,
-            input=input_messages,
-            tools=tools,
-            reasoning={"summary": "auto"},
-        )
-        
-        job_id = resp.id
-        print(f"[start_deep_research_job] Job submitted successfully with ID: {job_id}")
-        
-        return job_id
+            # Tools configuration
+            tools = [{"type": "web_search_preview"}]
+            
+            print("[start_deep_research_job] Submitting deep-research job...")
+            resp = client.responses.create(
+                model=research_model,
+                background=True,
+                input=input_messages,
+                tools=tools,
+                reasoning={"summary": "auto"},
+            )
+            
+            job_id = resp.id
+            print(f"[start_deep_research_job] Job submitted successfully with ID: {job_id}")
+            
+            return job_id
+        else:
+            # For other providers, use regular chat completion
+            print("[start_deep_research_job] Using regular chat completion for research...")
+            response = client.chat.completions.create(
+                model=research_model,
+                messages=[
+                    {"role": "system", "content": DEVELOPER_PROMPT},
+                    {"role": "user", "content": user_message}
+                ],
+                temperature=0.7
+            )
+            
+            # Return the response content directly since we can't do background jobs
+            return response.choices[0].message.content
         
     except openai.AuthenticationError:
         print("[start_deep_research_job] ERROR: Authentication failed")
-        raise RuntimeError("Invalid API key. Please check your OpenAI API key.")
+        raise RuntimeError("Invalid API key. Please check your API key configuration.")
     except openai.PermissionDeniedError:
         print("[start_deep_research_job] ERROR: Permission denied")
-        raise RuntimeError("API key doesn't have access to Deep Research model.")
+        raise RuntimeError("API key doesn't have access to the required model.")
+    except ProviderError as e:
+        print(f"[start_deep_research_job] ERROR: Provider error: {str(e)}")
+        raise RuntimeError(f"Provider configuration error: {str(e)}")
     except Exception as e:
         print(f"[start_deep_research_job] ERROR: {type(e).__name__}: {str(e)}")
-        raise RuntimeError(f"Failed to start Deep Research job: {str(e)}") 
+        raise RuntimeError(f"Failed to start research job: {str(e)}") 
 
 
 def test_job():
     print("test: run the jobs")
-    api_key = load_api_key()
-    if not api_key:
-        raise ValueError("OpenAI API key not found. Please configure your API key.")
-
-    client = OpenAI(api_key=api_key)
+    try:
+        client = create_client()
+    except ProviderError as e:
+        raise ValueError(f"Provider configuration error: {str(e)}")
 
     from utils.deep_research import test_data, deep_research_output_cleanup
 
