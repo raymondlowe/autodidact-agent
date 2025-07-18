@@ -36,6 +36,7 @@ from backend.db import (
 )
 
 from utils.config import load_api_key
+from utils.providers import create_client, get_model_for_task, get_provider_config, get_current_provider
 
 from backend.quiz_generators import (
     generate_final_test
@@ -62,18 +63,33 @@ def get_llm():
     print("-----------get_llm-----------")
     global llm
     if llm is None:
-        # Try getting API key 
-        api_key = load_api_key()
+        # Get current provider and its configuration
+        provider = get_current_provider()
+        
+        # Get API key for the current provider
+        api_key = load_api_key(provider)
         if not api_key or not api_key.strip():
-            print("[get_llm] No API key configured")
+            print(f"[get_llm] No API key configured for provider: {provider}")
             return None
 
         try:
-            llm = ChatOpenAI(
-                model_name="gpt-4o-mini",
-                temperature=0.7,
-                openai_api_key=api_key,
-            )
+            # Get provider configuration
+            config = get_provider_config(provider)
+            chat_model = get_model_for_task("chat", provider)
+            
+            # Create ChatOpenAI instance with provider-specific settings
+            llm_kwargs = {
+                "model_name": chat_model,
+                "temperature": 0.7,
+                "openai_api_key": api_key,
+            }
+            
+            # Add base_url if provider requires it (e.g., OpenRouter)
+            if config.get("base_url"):
+                llm_kwargs["base_url"] = config["base_url"]
+            
+            llm = ChatOpenAI(**llm_kwargs)
+            
             # Test the LLM with a simple call to validate the API key
             llm.invoke([{"role": "user", "content": "test"}])
         except Exception as e:

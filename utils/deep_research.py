@@ -5,12 +5,34 @@ Refactored from 02-topic-then-deep-research.py
 
 import json
 import time
+import re
 from typing import Dict, Optional
 import openai
 from openai import OpenAI
-from utils.config import DEEP_RESEARCH_MODEL, DEEP_RESEARCH_POLL_INTERVAL
+from utils.config import DEEP_RESEARCH_POLL_INTERVAL
+from utils.providers import create_client, get_model_for_task, get_current_provider, get_provider_info
 
 import jsonschema, networkx as nx, Levenshtein
+
+
+def clean_job_id(job_id: str) -> str:
+    """
+    Clean job_id by removing all control characters including newlines, tabs, etc.
+    
+    Args:
+        job_id: The raw job ID that may contain control characters
+        
+    Returns:
+        Cleaned job ID with all control characters removed
+    """
+    if not job_id:
+        return ""
+    
+    # Remove all control characters including \n, \r, \t, \f, \v, \0
+    # Keep only printable ASCII characters and spaces
+    cleaned = re.sub(r'[\r\n\t\f\v\0]', '', job_id.strip())
+    
+    return cleaned
 
 # After we get the user's topic & time investment preferences, this prompt is used to ask clarifying questions to the user
 TOPIC_CLARIFYING_PROMPT = """
@@ -115,12 +137,15 @@ TASK 3 - CONSOLIDATE AND RETURN FINAL VALID JSON
 
 def poll_background_job(client: OpenAI, job_id: str) -> Dict:
     """Poll until a background deep-research job is complete."""
+    # Clean job_id to remove any control characters including embedded newlines
+    clean_job_id_value = clean_job_id(job_id)
+    
     while True:
-        job = client.responses.retrieve(job_id)
+        job = client.responses.retrieve(clean_job_id_value)
         status = job.status
         if status in ("completed", "failed", "cancelled", "expired"):
             return job
-        print(f"[{time.strftime('%H:%M:%S')}] Job {job_id} → {status} …")
+        print(f"[{time.strftime('%H:%M:%S')}] Job {clean_job_id_value} → {status} …")
         time.sleep(DEEP_RESEARCH_POLL_INTERVAL)
 
 
@@ -222,38 +247,61 @@ def guardian_fixer(raw_json_str, error_bullets, client, high_model=False):
         error_bullets="\n".join(f"• {e}" for e in error_bullets)
     )
     print(f"[deep_research_output_cleanup] Prompt: {prompt}")
-    print(f"[deep_research_output_cleanup] Model: {'o4-mini' if high_model else 'gpt-4o'}")
-    start = time.perf_counter()
-    resp = client.responses.create(
-          model= "o4-mini" if high_model else "gpt-4o",
-          input=[{"role": "user", "content": prompt}],
-          # only include the reasoning if model is o4-mini
-          reasoning={"summary": "auto"} if high_model else None
+    
+    current_provider = get_current_provider()
+    provider_info = get_provider_info(current_provider)
+    
+    # For OpenAI, use the o4-mini model if available, otherwise fallback
+    if current_provider == "openai" and high_model:
+        model_to_use = "o4-mini"
+        print(f"[deep_research_output_cleanup] Model: {model_to_use}")
+        start = time.perf_counter()
+        resp = client.responses.create(
+              model=model_to_use,
+              input=[{"role": "user", "content": prompt}],
+              reasoning={"summary": "auto"}
+            )
+        elapsed = time.perf_counter() - start
+        print(f"Guardian pass finished in {elapsed:.2f} s")
+        return resp.output_text
+    else:
+        # For other providers or low model, use regular chat completion
+        chat_model = get_model_for_task("chat")
+        print(f"[deep_research_output_cleanup] Model: {chat_model}")
+        start = time.perf_counter()
+        resp = client.chat.completions.create(
+            model=chat_model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1
         )
-    elapsed = time.perf_counter() - start
-    print(f"Guardian pass finished in {elapsed:.2f} s")
-    return resp.output_text
+        elapsed = time.perf_counter() - start
+        print(f"Guardian pass finished in {elapsed:.2f} s")
+        return resp.choices[0].message.content
 
 def deep_research_output_cleanup(raw_json_str, client):
-    # lint and if error, passes to o4-mini-high to fix
+    # lint and if error, passes to higher model to fix
     errs = lint(raw_json_str)
     print(f"[deep_research_output_cleanup] first lint: Errs: {errs}")
     if not errs:
         return raw_json_str
     else:
-        print(f"[deep_research_output_cleanup] Trying to fix with 4o")
+        current_provider = get_current_provider()
+        print(f"[deep_research_output_cleanup] Trying to fix with chat model for {current_provider}")
         fixed = guardian_fixer(raw_json_str, errs, client, high_model=False)
         errs2 = lint(fixed)
         if not errs2:
             return fixed
         else: 
-            print(f"[deep_research_output_cleanup] Trying to fix with o4-mini")
-            fixed = guardian_fixer(fixed, errs2, client, high_model=True)
-            errs3 = lint(fixed)
-            if not errs3:
-                return fixed
+            if current_provider == "openai":
+                print(f"[deep_research_output_cleanup] Trying to fix with o4-mini")
+                fixed = guardian_fixer(fixed, errs2, client, high_model=True)
+                errs3 = lint(fixed)
+                if not errs3:
+                    return fixed
+                else:
+                    raise RuntimeError(f"[deep_research_output_cleanup] Failed to fix with both models")
             else:
-                raise RuntimeError(f"[deep_research_output_cleanup] Failed to fix with both models")
+                raise RuntimeError(f"[deep_research_output_cleanup] Failed to fix with {current_provider} chat model")
 
 test_data = """
 {

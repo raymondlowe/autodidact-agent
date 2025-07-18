@@ -1,11 +1,14 @@
 """
 Settings page
-Manage API key and other application settings
+Manage API keys and provider configuration
 """
 
 import streamlit as st
-from utils.config import load_api_key, save_api_key, CONFIG_FILE
-from openai import OpenAI
+from utils.config import (
+    load_api_key, save_api_key, CONFIG_FILE, get_current_provider,
+    set_current_provider, SUPPORTED_PROVIDERS
+)
+from utils.providers import validate_api_key, get_provider_info, list_available_models
 from pathlib import Path
 
 # Page header
@@ -18,11 +21,51 @@ if st.button("← Back to Home", key="back_to_home"):
 
 st.markdown("---")
 
+# AI Provider section
+st.markdown("## 🤖 AI Provider Configuration")
+
+current_provider = get_current_provider()
+provider_info = get_provider_info(current_provider)
+
+col1, col2 = st.columns([1, 1])
+
+with col1:
+    st.markdown("### Current Provider")
+    st.info(f"**{provider_info.get('name', current_provider.title())}**")
+    st.markdown(provider_info.get('description', ''))
+    
+    # Provider selection
+    new_provider = st.selectbox(
+        "Switch Provider:",
+        options=SUPPORTED_PROVIDERS,
+        index=SUPPORTED_PROVIDERS.index(current_provider),
+        format_func=lambda x: get_provider_info(x).get("name", x.title()),
+        help="Select your preferred AI provider"
+    )
+    
+    if new_provider != current_provider:
+        if st.button("🔄 Switch Provider", type="secondary"):
+            set_current_provider(new_provider)
+            st.session_state.api_key = None  # Clear current API key
+            st.success(f"Switched to {get_provider_info(new_provider).get('name', new_provider)}")
+            st.rerun()
+
+with col2:
+    st.markdown("### Available Models")
+    try:
+        models = list_available_models(current_provider)
+        for task, model in models.items():
+            st.code(f"{task}: {model}")
+    except Exception as e:
+        st.warning(f"Could not load models: {e}")
+
+st.markdown("---")
+
 # API Key section
-st.markdown("## 🔑 OpenAI API Key")
+st.markdown(f"## 🔑 {provider_info.get('name', current_provider.title())} API Key")
 
 # Check current API key status
-current_key = st.session_state.get('api_key') or load_api_key()
+current_key = st.session_state.get('api_key') or load_api_key(current_provider)
 
 if current_key:
     # API key is configured
@@ -41,7 +84,13 @@ if current_key:
     with col2:
         if st.button("🗑️ Remove API Key", type="secondary", use_container_width=True):
             if CONFIG_FILE.exists():
-                CONFIG_FILE.unlink()
+                # Just remove the current provider's key, not the whole file
+                from utils.config import load_config, save_config
+                config = load_config()
+                key_name = f"{current_provider}_api_key"
+                if key_name in config:
+                    del config[key_name]
+                    save_config(config)
             st.session_state.api_key = None
             st.success("API key removed successfully!")
             st.rerun()
@@ -53,43 +102,40 @@ if current_key:
             new_key = st.text_input(
                 "New API Key:",
                 type="password",
-                placeholder="sk-...",
-                help="Enter your new OpenAI API key"
+                placeholder=provider_info.get('api_key_prefix', 'sk-') + "...",
+                help=f"Enter your new {provider_info.get('name', current_provider)} API key"
             )
             
             if st.form_submit_button("Save New Key", type="primary"):
-                if new_key and new_key.startswith("sk-"):
+                prefix = provider_info.get('api_key_prefix', 'sk-')
+                if new_key and new_key.startswith(prefix):
                     with st.spinner("Validating API key..."):
-                        try:
-                            # Test the API key
-                            test_client = OpenAI(api_key=new_key)
-                            test_client.models.list()
-                            
+                        if validate_api_key(new_key, current_provider):
                             # Save it
-                            save_api_key(new_key)
+                            save_api_key(new_key, current_provider)
                             st.session_state.api_key = new_key
                             st.session_state.show_update_key = False
                             st.success("✅ API key updated successfully!")
                             st.rerun()
-                        except Exception as e:
-                            st.error(f"❌ Invalid API key: {str(e)}")
+                        else:
+                            st.error(f"❌ Invalid API key for {provider_info.get('name', current_provider)}")
                 else:
-                    st.error("Please enter a valid OpenAI API key (should start with 'sk-')")
+                    st.error(f"Please enter a valid {provider_info.get('name', current_provider)} API key (should start with '{prefix}')")
 else:
     # No API key configured
     st.warning("⚠️ No API Key configured")
-    st.markdown("""
-    To use Autodidact, you need an OpenAI API key. This allows the app to:
+    st.markdown(f"""
+    To use Autodidact with {provider_info.get('name', current_provider)}, you need an API key. This allows the app to:
     - Generate clarifying questions
-    - Conduct deep research on topics
+    - Conduct research on topics  
     - Power the AI tutor conversations
     """)
     
     # API key input
     api_key = st.text_input(
-        "Enter your OpenAI API key:",
+        f"Enter your {provider_info.get('name', current_provider)} API key:",
         type="password",
-        placeholder="sk-...",
+        placeholder=provider_info.get('api_key_prefix', 'sk-') + "...",
         help="Your API key will be stored in ~/.autodidact/.env.json"
     )
     
@@ -97,37 +143,34 @@ else:
     
     with col1:
         if st.button("💾 Save API Key", type="primary", use_container_width=True, disabled=not api_key):
-            if api_key and api_key.startswith("sk-"):
+            prefix = provider_info.get('api_key_prefix', 'sk-')
+            if api_key and api_key.startswith(prefix):
                 with st.spinner("Validating API key..."):
-                    try:
-                        # Test the API key
-                        test_client = OpenAI(api_key=api_key)
-                        test_client.models.list()
-                        
+                    if validate_api_key(api_key, current_provider):
                         # Save it
-                        save_api_key(api_key)
+                        save_api_key(api_key, current_provider)
                         st.session_state.api_key = api_key
                         st.success("✅ API key saved successfully!")
                         st.balloons()
                         st.rerun()
-                    except Exception as e:
-                        st.error(f"❌ Invalid API key: {str(e)}")
+                    else:
+                        st.error(f"❌ Invalid API key for {provider_info.get('name', current_provider)}")
             else:
-                st.error("Please enter a valid OpenAI API key (should start with 'sk-')")
+                st.error(f"Please enter a valid {provider_info.get('name', current_provider)} API key (should start with '{prefix}')")
     
     with col2:
         st.link_button(
             "🔗 Get API Key",
-            "https://platform.openai.com/api-keys",
-            help="Create an API key on OpenAI's website",
+            provider_info.get('signup_url', '#'),
+            help=f"Create an API key on {provider_info.get('name', current_provider)}'s website",
             use_container_width=True
         )
     
     with col3:
         st.link_button(
             "📖 Pricing Info",
-            "https://openai.com/pricing",
-            help="View OpenAI's pricing details",
+            provider_info.get('pricing_url', '#'),
+            help=f"View {provider_info.get('name', current_provider)}'s pricing details",
             use_container_width=True
         )
 
@@ -191,21 +234,26 @@ st.markdown("---")
 st.markdown("## 🆘 Need Help?")
 
 with st.expander("Frequently Asked Questions"):
-    st.markdown("""
+    st.markdown(f"""
     **Q: How much does it cost to use Autodidact?**
     
-    A: Autodidact itself is free. You only pay for OpenAI API usage, which typically costs:
-    - $0.01-0.02 for topic clarification
-    - $0.50-2.00 for deep research (one-time per topic)
-    - $0.02-0.05 per 30-minute tutoring session
+    A: Autodidact itself is free. You only pay for API usage to your chosen provider:
+    - **OpenAI**: $0.01-0.02 for topic clarification, $0.50-2.00 for deep research, $0.02-0.05 per tutoring session
+    - **OpenRouter**: Varies by model, typically $0.001-0.05 per request depending on the model chosen
     
     **Q: Where is my data stored?**
     
-    A: All data is stored locally in `~/.autodidact/` on your computer. Nothing is sent to any servers except your API calls to OpenAI.
+    A: All data is stored locally in `~/.autodidact/` on your computer. Nothing is sent to any servers except your API calls to your chosen provider.
     
-    **Q: Can I use a different AI provider?**
+    **Q: What's the difference between providers?**
     
-    A: Currently, Autodidact only supports OpenAI's API. Future versions may support other providers.
+    A: 
+    - **OpenAI**: Access to GPT models and deep research capabilities with web search
+    - **OpenRouter**: Access to multiple AI models (Claude, Gemini, etc.) but no deep research mode
+    
+    **Q: Can I switch between providers?**
+    
+    A: Yes! You can configure API keys for multiple providers and switch between them in Settings.
     
     **Q: How do I report bugs or request features?**
     

@@ -6,7 +6,7 @@ Main entry point with Streamlit navigation
 import streamlit as st
 from components.sidebar import show_sidebar
 from components.api_key_overlay import check_and_show_api_overlay
-from utils.config import load_api_key
+from utils.config import load_api_key, get_current_provider
 
 # Page configuration
 st.set_page_config(
@@ -22,7 +22,8 @@ init_database()
 
 # Initialize session state
 if "api_key" not in st.session_state:
-    st.session_state.api_key = load_api_key()
+    current_provider = get_current_provider()
+    st.session_state.api_key = load_api_key(current_provider)
 
 # Define pages
 home = st.Page("pages/home.py", title="Home", url_path="", default=True)
