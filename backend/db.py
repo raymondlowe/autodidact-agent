@@ -289,8 +289,8 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
     Check job status and update project if complete.
     Returns True if job is complete (either success or failure), False if still processing.
     """
-    from utils.providers import create_client
-    from utils.config import save_project_files
+    from utils.providers import create_client, get_provider_info
+    from utils.config import save_project_files, get_current_provider
     from utils.deep_research import deep_research_output_cleanup
 
     # Clean job_id to remove any control characters including embedded newlines
@@ -299,38 +299,65 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
     print(f"[check_and_complete_job] Checking job {clean_job_id_value} for project {project_id}")
     
     try:
-
         # Create provider-aware client
         client = create_client()
+        current_provider = get_current_provider()
+        provider_info = get_provider_info(current_provider)
+        supports_deep_research = provider_info.get("supports_deep_research", False)
         
-        # Retrieve job status
-        job = client.responses.retrieve(clean_job_id_value)
+        # For providers that don't support deep research (like OpenRouter),
+        # the "job_id" is actually the complete response content
+        if not supports_deep_research:
+            print(f"[check_and_complete_job] Provider {current_provider} doesn't support background jobs, processing response content directly")
+            json_str = clean_job_id_value
+        else:
+            # For providers that support deep research (like OpenAI), retrieve the actual job
+            job = client.responses.retrieve(clean_job_id_value)
+            
+            if job.status == "completed":
+                print(f"[check_and_complete_job] Job {clean_job_id_value} completed successfully")
 
-        
-        if job.status == "completed":
-            print(f"[check_and_complete_job] Job {clean_job_id_value} completed successfully")
-
-            json_str = job.output_text
-            
-            # TODO: remove this after confirming that job.output_text works in all cases
-            # # Extract the result
-            # content_block = job.output[-1].content[0]
-            # if content_block.type != "output_text":
-            #     raise RuntimeError("Unexpected content block type")
-            
-            # fixes small typos, invalid JSON, etc, by passing to 4o or o4-mini to fix
-            json_str = deep_research_output_cleanup(json_str, client)
-            
-            # Parse the JSON response
-            try:
-                data = json.loads(json_str)
-            except json.JSONDecodeError as e:
-                print(f"[check_and_complete_job] Failed to parse JSON: {e}")
+                json_str = job.output_text
+                
+                # TODO: remove this after confirming that job.output_text works in all cases
+                # # Extract the result
+                # content_block = job.output[-1].content[0]
+                # if content_block.type != "output_text":
+                #     raise RuntimeError("Unexpected content block type")
+                
+            elif job.status == "failed":
+                print(f"[check_and_complete_job] Job {clean_job_id_value} failed")
                 update_project_status(project_id, 'failed')
                 return True
+                
+            elif job.status == "cancelled":
+                print(f"[check_and_complete_job] Job {clean_job_id_value} was cancelled")
+                update_project_status(project_id, 'failed')
+                return True
+                
+            else: # in_progress, queued, incomplete
+                # Still processing
+                print(f"[check_and_complete_job] Job {clean_job_id_value} still processing (status: {job.status})")
+                return False
+        
+        # Process the JSON response (common for both provider types)
+        # fixes small typos, invalid JSON, etc, by passing to 4o or o4-mini to fix
+        try:
+            json_str = deep_research_output_cleanup(json_str, client)
+        except Exception as cleanup_error:
+            print(f"[check_and_complete_job] JSON cleanup failed, using original response: {cleanup_error}")
+            # Continue with the original JSON string if cleanup fails
             
-            # Validate and extract components
-            if "resources" in data and "nodes" in data:
+        # Parse the JSON response
+        try:
+            data = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            print(f"[check_and_complete_job] Failed to parse JSON: {e}")
+            update_project_status(project_id, 'failed')
+            return True
+        
+        # Validate and extract components
+        if "resources" in data and "nodes" in data:
                 resources = data["resources"]
                 graph = {
                     "nodes": data["nodes"],
@@ -353,65 +380,50 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
                 for resource in data["resources"]:
                     report_markdown += f"- [{resource['title']}]({resource['url']}) - {resource['scope']}\n"
                 
-            else:
-                # missing data. should we just throw an error here?
-                print("Invalid/empty data returned from deep research")
-                update_project_status(project_id, 'failed')
-                return True
+        else:
+            # missing data. should we just throw an error here?
+            print("Invalid/empty data returned from deep research")
+            update_project_status(project_id, 'failed')
+            return True
 
-            # Ensure nodes have properly structured learning_objectives 
-            # (until this point, learning_objectives is a list of strings, now its a list of dicts with a "description" key)
-            for node in graph["nodes"]:
-                if "learning_objectives" in node:
-                    node["learning_objectives"] = [{"description": obj} for obj in node["learning_objectives"]]
-                elif "objectives" in node:
-                    # old syntax
-                    node["learning_objectives"] = [{"description": obj} for obj in node["objectives"]]
-                else:
-                    # Generate defaults. Not sure if this is even hit tbh
-                    node["learning_objectives"] = [
-                        {"description": f"Understand the key concepts of {node.get('label', node.get('title', 'this topic'))}"},
-                        {"description": f"Apply principles in practice"},
-                        {"description": f"Analyze relationships with related topics"},
-                        {"description": f"Evaluate different approaches"},
-                        {"description": f"Create solutions using this knowledge"}
-                    ]
-            
-            # Save files
-            report_path = save_project_files(
-                project_id,
-                report_markdown,
-                graph,
-                data
-            )
-            
-            # Update project to mark it as completed.
-            # also Save graph nodes, edges, and learning_objectives to their respective db tables
-            update_project_completed_and_save_graph_to_db(
-                project_id,
-                report_path=report_path,
-                resources=resources,
-                graph_data=graph,
-                status='completed'
-            )
-            
-            print(f"[check_and_complete_job] Project {project_id} updated successfully")
-            return True
-            
-        elif job.status == "failed":
-            print(f"[check_and_complete_job] Job {clean_job_id_value} failed")
-            update_project_status(project_id, 'failed')
-            return True
-            
-        elif job.status == "cancelled":
-            print(f"[check_and_complete_job] Job {clean_job_id_value} was cancelled")
-            update_project_status(project_id, 'failed')
-            return True
-            
-        else: # in_progress, queued, incomplete
-            # Still processing
-            print(f"[check_and_complete_job] Job {clean_job_id_value} still processing (status: {job.status})")
-            return False
+        # Ensure nodes have properly structured learning_objectives 
+        # (until this point, learning_objectives is a list of strings, now its a list of dicts with a "description" key)
+        for node in graph["nodes"]:
+            if "learning_objectives" in node:
+                node["learning_objectives"] = [{"description": obj} for obj in node["learning_objectives"]]
+            elif "objectives" in node:
+                # old syntax
+                node["learning_objectives"] = [{"description": obj} for obj in node["objectives"]]
+            else:
+                # Generate defaults. Not sure if this is even hit tbh
+                node["learning_objectives"] = [
+                    {"description": f"Understand the key concepts of {node.get('label', node.get('title', 'this topic'))}"},
+                    {"description": f"Apply principles in practice"},
+                    {"description": f"Analyze relationships with related topics"},
+                    {"description": f"Evaluate different approaches"},
+                    {"description": f"Create solutions using this knowledge"}
+                ]
+        
+        # Save files
+        report_path = save_project_files(
+            project_id,
+            report_markdown,
+            graph,
+            data
+        )
+        
+        # Update project to mark it as completed.
+        # also Save graph nodes, edges, and learning_objectives to their respective db tables
+        update_project_completed_and_save_graph_to_db(
+            project_id,
+            report_path=report_path,
+            resources=resources,
+            graph_data=graph,
+            status='completed'
+        )
+        
+        print(f"[check_and_complete_job] Project {project_id} updated successfully")
+        return True
             
     except Exception as e:
         print(f"[check_and_complete_job] Error checking job: {e}")
@@ -422,7 +434,8 @@ def check_job(job_id: str) -> bool:
     """
     Check job status and returns result.
     """
-    from utils.providers import create_client
+    from utils.providers import create_client, get_provider_info
+    from utils.config import get_current_provider
 
     # Clean job_id to remove any control characters including embedded newlines
     clean_job_id_value = clean_job_id(job_id)
@@ -430,9 +443,16 @@ def check_job(job_id: str) -> bool:
     print(f"[check_job] Checking job {clean_job_id_value}")
     
     try:
-
         # Create provider-aware client
         client = create_client()
+        current_provider = get_current_provider()
+        provider_info = get_provider_info(current_provider)
+        supports_deep_research = provider_info.get("supports_deep_research", False)
+        
+        # For providers that don't support deep research, return None since there's no job to check
+        if not supports_deep_research:
+            print(f"[check_job] Provider {current_provider} doesn't support background jobs")
+            return None
         
         # Retrieve job status
         job = client.responses.retrieve(clean_job_id_value)
@@ -839,7 +859,8 @@ def delete_project(project_id: str) -> bool:
     Returns True if successful, False otherwise.
     """
     import shutil
-    from utils.providers import create_client
+    from utils.providers import create_client, get_provider_info
+    from utils.config import get_current_provider
     
     try:
         # Step 1: Cancel active job if processing
@@ -848,14 +869,20 @@ def delete_project(project_id: str) -> bool:
             raise ValueError(f"Project {project_id} not found")
             
         if project['status'] == 'processing' and project['job_id']:
-            # Cancel the OpenAI job
-            api_key = load_api_key()
+            # Cancel the OpenAI job (only for providers that support background jobs)
             try:
                 client = create_client()
-                clean_job_id_value = clean_job_id(project['job_id'])
-                # FIXME: also cancel the job when we retry with o3?
-                client.responses.cancel(clean_job_id_value)
-                print(f"Cancelled job {clean_job_id_value} for project {project_id}")
+                current_provider = get_current_provider()
+                provider_info = get_provider_info(current_provider)
+                supports_deep_research = provider_info.get("supports_deep_research", False)
+                
+                if supports_deep_research:
+                    clean_job_id_value = clean_job_id(project['job_id'])
+                    # FIXME: also cancel the job when we retry with o3?
+                    client.responses.cancel(clean_job_id_value)
+                    print(f"Cancelled job {clean_job_id_value} for project {project_id}")
+                else:
+                    print(f"Provider {current_provider} doesn't support background jobs, no job to cancel")
             except Exception as e:
                 print(f"Failed to cancel job {project['job_id']}: {e}")
                 # Continue with deletion anyway
