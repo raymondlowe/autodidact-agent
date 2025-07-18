@@ -12,13 +12,33 @@ from typing import List, Tuple
 
 from langchain_openai import ChatOpenAI
 from utils.config import load_api_key
+from utils.providers import get_model_for_task, get_provider_config, get_current_provider
 
-# single shared client
-_llm_grader = ChatOpenAI(
-    model_name="gpt-4o-mini",
-    temperature=0,           # deterministic scoring
-    openai_api_key=load_api_key(),
-)
+# Initialize grader LLM using provider layer
+def _get_grader_llm():
+    """Get or create the grader LLM instance using the current provider."""
+    provider = get_current_provider()
+    api_key = load_api_key(provider)
+    
+    if not api_key:
+        raise ValueError(f"No API key configured for provider: {provider}")
+    
+    # Get provider configuration
+    config = get_provider_config(provider)
+    chat_model = get_model_for_task("chat", provider)
+    
+    # Create ChatOpenAI instance with provider-specific settings
+    llm_kwargs = {
+        "model_name": chat_model,
+        "temperature": 0,           # deterministic scoring
+        "openai_api_key": api_key,
+    }
+    
+    # Add base_url if provider requires it (e.g., OpenRouter)
+    if config.get("base_url"):
+        llm_kwargs["base_url"] = config["base_url"]
+    
+    return ChatOpenAI(**llm_kwargs)
 
 _GRADER_SYSTEM_PROMPT = (
     "You are a strict but fair examiner. "
@@ -55,3 +75,9 @@ def grade_test(llm: ChatOpenAI, questions: List[str], answers: List[str]) -> Tup
         scores.append(score)
     overall = sum(scores) / len(scores) if scores else 0.0
     return scores, overall
+
+
+def grade_test_with_current_provider(questions: List[str], answers: List[str]) -> Tuple[List[float], float]:
+    """Grade test using the current provider. Convenience function."""
+    llm = _get_grader_llm()
+    return grade_test(llm, questions, answers)
