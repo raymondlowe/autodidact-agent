@@ -447,7 +447,6 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
             from utils.config import PERPLEXITY_DEEP_RESEARCH_TIMEOUT
             
             # Create OpenAI client with longer timeout for Perplexity
-            import openai
             long_timeout_client = openai.OpenAI(
                 api_key=client.api_key,
                 base_url=client.base_url,
