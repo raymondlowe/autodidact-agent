@@ -18,6 +18,27 @@ Autodidact is an AI-powered personalized learning assistant that creates custom 
 
 ## Installation
 
+### Option 1: Docker (Recommended)
+
+The easiest way to run Autodidact is using Docker:
+
+1. Clone the repository:
+```bash
+git clone https://github.com/yourusername/autodidact.git
+cd autodidact
+```
+
+2. Run with Docker Compose:
+```bash
+docker compose up
+```
+
+The application will be available at http://localhost:8501
+
+**Note**: Your data (database, configuration, projects) will be persisted in a Docker volume called `autodidact_data`, so it will be preserved across container restarts.
+
+### Option 2: Local Installation
+
 1. Clone the repository:
 ```bash
 git clone https://github.com/yourusername/autodidact.git
