@@ -45,6 +45,10 @@ DEEP_RESEARCH_POLL_INTERVAL = 10  # seconds
 # Mastery settings
 MASTERY_THRESHOLD = 0.7
 
+# App Attribution settings for OpenRouter
+APP_NAME = "Autodidact Agent"
+APP_URL = "https://github.com/raymondlowe/autodidact-agent"
+
 
 def ensure_config_directory():
     """Ensure configuration directory exists with proper permissions"""

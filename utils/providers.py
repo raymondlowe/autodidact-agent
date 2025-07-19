@@ -7,7 +7,7 @@ from openai import OpenAI
 from typing import Dict, Optional
 from utils.config import (
     load_api_key, get_current_provider, get_provider_config, 
-    SUPPORTED_PROVIDERS
+    SUPPORTED_PROVIDERS, APP_NAME, APP_URL
 )
 
 
@@ -16,13 +16,14 @@ class ProviderError(Exception):
     pass
 
 
-def create_client(provider: str = None) -> OpenAI:
+def create_client(provider: str = None, **kwargs) -> OpenAI:
     """
     Create an API client for the specified provider.
     OpenRouter is compatible with OpenAI's API, so we can use the same client.
     
     Args:
         provider: Provider name ("openai" or "openrouter"). If None, uses current provider.
+        **kwargs: Additional parameters passed to the OpenAI client constructor
         
     Returns:
         OpenAI client configured for the specified provider
@@ -48,6 +49,17 @@ def create_client(provider: str = None) -> OpenAI:
     client_kwargs = {"api_key": api_key}
     if config.get("base_url"):
         client_kwargs["base_url"] = config["base_url"]
+    
+    # Add app attribution headers for OpenRouter
+    if provider == "openrouter":
+        default_headers = {
+            "HTTP-Referer": APP_URL,
+            "X-Title": APP_NAME,
+        }
+        client_kwargs["default_headers"] = default_headers
+    
+    # Merge any additional kwargs passed by caller
+    client_kwargs.update(kwargs)
     
     return OpenAI(**client_kwargs)
 
@@ -91,10 +103,18 @@ def validate_api_key(api_key: str, provider: str) -> bool:
     try:
         config = get_provider_config(provider)
         
-        # Create test client
+        # Create test client with same configuration as create_client
         client_kwargs = {"api_key": api_key}
         if config.get("base_url"):
             client_kwargs["base_url"] = config["base_url"]
+        
+        # Add app attribution headers for OpenRouter
+        if provider == "openrouter":
+            default_headers = {
+                "HTTP-Referer": APP_URL,
+                "X-Title": APP_NAME,
+            }
+            client_kwargs["default_headers"] = default_headers
         
         test_client = OpenAI(**client_kwargs)
         
@@ -138,6 +158,105 @@ def get_provider_info(provider: str) -> Dict:
     }
     
     return provider_info.get(provider, {})
+
+
+def get_api_call_params(
+    model: str,
+    messages: list,
+    provider: str = None,
+    temperature: Optional[float] = None,
+    max_tokens: Optional[int] = None,
+    top_p: Optional[float] = None,
+    top_k: Optional[int] = None,
+    frequency_penalty: Optional[float] = None,
+    presence_penalty: Optional[float] = None,
+    repetition_penalty: Optional[float] = None,
+    min_p: Optional[float] = None,
+    top_a: Optional[float] = None,
+    seed: Optional[int] = None,
+    logit_bias: Optional[Dict] = None,
+    logprobs: Optional[bool] = None,
+    top_logprobs: Optional[int] = None,
+    response_format: Optional[Dict] = None,
+    stop: Optional[list] = None,
+    tools: Optional[list] = None,
+    tool_choice: Optional[str] = None,
+    **kwargs
+) -> Dict:
+    """
+    Build API call parameters with optional OpenRouter-specific parameters.
+    
+    Args:
+        model: Model name to use
+        messages: List of messages for the conversation
+        provider: Provider name. If None, uses current provider.
+        temperature: Sampling temperature (0.0 to 2.0)
+        max_tokens: Maximum tokens to generate
+        top_p: Nucleus sampling parameter (0.0 to 1.0)
+        top_k: Top-k sampling parameter 
+        frequency_penalty: Frequency penalty (-2.0 to 2.0)
+        presence_penalty: Presence penalty (-2.0 to 2.0)
+        repetition_penalty: Repetition penalty (0.0 to 2.0)
+        min_p: Minimum probability threshold (0.0 to 1.0)
+        top_a: Top-a sampling parameter (0.0 to 1.0)
+        seed: Random seed for deterministic sampling
+        logit_bias: Token bias map
+        logprobs: Whether to return log probabilities
+        top_logprobs: Number of top log probabilities to return
+        response_format: Output format specification
+        stop: Stop sequences
+        tools: Tool definitions for function calling
+        tool_choice: Tool choice strategy
+        **kwargs: Additional parameters
+        
+    Returns:
+        Dictionary of API call parameters
+    """
+    if provider is None:
+        provider = get_current_provider()
+    
+    # Start with base parameters
+    params = {
+        "model": model,
+        "messages": messages
+    }
+    
+    # Add optional parameters if provided
+    optional_params = {
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "top_p": top_p,
+        "frequency_penalty": frequency_penalty,
+        "presence_penalty": presence_penalty,
+        "seed": seed,
+        "logit_bias": logit_bias,
+        "logprobs": logprobs,
+        "top_logprobs": top_logprobs,
+        "response_format": response_format,
+        "stop": stop,
+        "tools": tools,
+        "tool_choice": tool_choice,
+    }
+    
+    # Add OpenRouter-specific parameters if using OpenRouter
+    if provider == "openrouter":
+        openrouter_params = {
+            "top_k": top_k,
+            "repetition_penalty": repetition_penalty,
+            "min_p": min_p,
+            "top_a": top_a,
+        }
+        optional_params.update(openrouter_params)
+    
+    # Only include parameters that have values
+    for key, value in optional_params.items():
+        if value is not None:
+            params[key] = value
+    
+    # Add any additional kwargs
+    params.update(kwargs)
+    
+    return params
 
 
 def list_available_models(provider: str = None) -> Dict:
