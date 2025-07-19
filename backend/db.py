@@ -303,42 +303,63 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
         client = create_client()
         current_provider = get_current_provider()
         provider_info = get_provider_info(current_provider)
-        supports_deep_research = provider_info.get("supports_deep_research", False)
         
-        # For providers that don't support deep research (like OpenRouter),
-        # the "job_id" is actually the complete response content
-        if not supports_deep_research:
-            print(f"[check_and_complete_job] Provider {current_provider} doesn't support background jobs, processing response content directly")
-            json_str = clean_job_id_value
-        else:
-            # For providers that support deep research (like OpenAI), retrieve the actual job
+        # Handle different job types based on job_id format
+        if clean_job_id_value.startswith("perplexity-") or clean_job_id_value.startswith("chat-"):
+            # Handle pseudo job IDs (Perplexity or fallback responses)
+            print(f"[check_and_complete_job] Processing pseudo job ID {clean_job_id_value}")
+            
+            # Check for stored response file
+            from pathlib import Path
+            temp_dir = Path.home() / '.autodidact' / 'temp_responses'
+            temp_file = temp_dir / f"{clean_job_id_value}.json"
+            
+            if temp_file.exists():
+                print(f"[check_and_complete_job] Found stored response for {clean_job_id_value}")
+                import json
+                with open(temp_file, 'r') as f:
+                    stored_data = json.load(f)
+                
+                json_str = stored_data.get("content", "")
+                if not json_str:
+                    print(f"[check_and_complete_job] No content found in stored response")
+                    update_project_status(project_id, 'failed')
+                    return True
+                
+                # Clean up temp file after reading
+                temp_file.unlink()
+                print(f"[check_and_complete_job] Processed and cleaned up temp file for {clean_job_id_value}")
+            else:
+                print(f"[check_and_complete_job] Temp file not found for {clean_job_id_value}, job may still be processing")
+                return False
+                
+        elif current_provider == "openai":
+            # Handle OpenAI background jobs
+            print(f"[check_and_complete_job] Checking OpenAI background job {clean_job_id_value}")
             job = client.responses.retrieve(clean_job_id_value)
             
             if job.status == "completed":
-                print(f"[check_and_complete_job] Job {clean_job_id_value} completed successfully")
-
+                print(f"[check_and_complete_job] OpenAI job {clean_job_id_value} completed successfully")
                 json_str = job.output_text
                 
-                # TODO: remove this after confirming that job.output_text works in all cases
-                # # Extract the result
-                # content_block = job.output[-1].content[0]
-                # if content_block.type != "output_text":
-                #     raise RuntimeError("Unexpected content block type")
-                
             elif job.status == "failed":
-                print(f"[check_and_complete_job] Job {clean_job_id_value} failed")
+                print(f"[check_and_complete_job] OpenAI job {clean_job_id_value} failed")
                 update_project_status(project_id, 'failed')
                 return True
                 
             elif job.status == "cancelled":
-                print(f"[check_and_complete_job] Job {clean_job_id_value} was cancelled")
+                print(f"[check_and_complete_job] OpenAI job {clean_job_id_value} was cancelled")
                 update_project_status(project_id, 'failed')
                 return True
                 
             else: # in_progress, queued, incomplete
                 # Still processing
-                print(f"[check_and_complete_job] Job {clean_job_id_value} still processing (status: {job.status})")
+                print(f"[check_and_complete_job] OpenAI job {clean_job_id_value} still processing (status: {job.status})")
                 return False
+        else:
+            # Legacy handling for old job format
+            print(f"[check_and_complete_job] Using legacy handling for job {clean_job_id_value}")
+            json_str = clean_job_id_value
         
         # Process the JSON response (common for both provider types)
         # fixes small typos, invalid JSON, etc, by passing to 4o or o4-mini to fix
@@ -446,18 +467,44 @@ def check_job(job_id: str) -> bool:
         # Create provider-aware client
         client = create_client()
         current_provider = get_current_provider()
-        provider_info = get_provider_info(current_provider)
-        supports_deep_research = provider_info.get("supports_deep_research", False)
         
-        # For providers that don't support deep research, return None since there's no job to check
-        if not supports_deep_research:
+        # Handle different job types based on job_id format
+        if clean_job_id_value.startswith("perplexity-") or clean_job_id_value.startswith("chat-"):
+            # Handle pseudo job IDs (Perplexity or fallback responses)
+            print(f"[check_job] Checking pseudo job ID {clean_job_id_value}")
+            
+            # Check for stored response file
+            from pathlib import Path
+            temp_dir = Path.home() / '.autodidact' / 'temp_responses'
+            temp_file = temp_dir / f"{clean_job_id_value}.json"
+            
+            if temp_file.exists():
+                print(f"[check_job] Found completed pseudo job {clean_job_id_value}")
+                import json
+                with open(temp_file, 'r') as f:
+                    stored_data = json.load(f)
+                
+                # Create a mock job object for compatibility
+                class MockJob:
+                    def __init__(self, status, content):
+                        self.status = status
+                        self.output_text = content
+                
+                return MockJob("completed", stored_data.get("content", ""))
+            else:
+                print(f"[check_job] Pseudo job {clean_job_id_value} not found, may still be processing")
+                return None
+                
+        elif current_provider == "openai":
+            # Handle OpenAI background jobs
+            print(f"[check_job] Checking OpenAI background job {clean_job_id_value}")
+            job = client.responses.retrieve(clean_job_id_value)
+            return job
+        else:
+            # Legacy or unsupported provider
             print(f"[check_job] Provider {current_provider} doesn't support background jobs")
             return None
-        
-        # Retrieve job status
-        job = client.responses.retrieve(clean_job_id_value)
 
-        return job
     except Exception as e:
         print(f"[check_job] Error checking job: {e}")
         # Don't mark as failed on transient errors
