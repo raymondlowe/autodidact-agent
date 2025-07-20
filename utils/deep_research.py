@@ -91,7 +91,7 @@ TASK 1 - RESOURCES
 - Identify 10-15 authoritative, learner-friendly resources suitable for motivated autodidacts on the specified topic.
 - Return them as a JSON array **resources** with:
   { "rid", "title", "type", "url", "date", "scope" }
-  - type ∈ {book | paper | video | interactive | article}.
+  - type ∈ {book | paper | video | interactive | article | library}.
   - scope = one-sentence summary.
 - An example resource:
   {
@@ -161,7 +161,7 @@ SCHEMA = {
         "properties":{
           "rid":{"type":"string"},
           "title":{"type":"string"},
-          "type":{"enum":["book","paper","video","interactive","article"]},
+          "type":{"enum":["book","paper","video","interactive","article","library"]},
           "url":{"type":"string","format":"uri"}
         }
       }
@@ -279,16 +279,58 @@ def guardian_fixer(raw_json_str, error_bullets, client, high_model=False):
         print(f"Guardian pass finished in {elapsed:.2f} s")
         return resp.choices[0].message.content
 
+def extract_json_from_markdown(content: str) -> str:
+    """
+    Extract JSON content from markdown code blocks.
+    
+    Args:
+        content: Raw content that may contain JSON wrapped in markdown
+        
+    Returns:
+        Extracted JSON string, or original content if no JSON block found
+    """
+    lines = content.split('\n')
+    json_start = -1
+    json_end = -1
+    
+    # Look for ```json ... ``` blocks
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped == '```json':
+            json_start = i + 1
+        elif stripped == '```' and json_start != -1:
+            json_end = i
+            break
+    
+    if json_start != -1 and json_end != -1:
+        json_lines = lines[json_start:json_end]
+        extracted_json = '\n'.join(json_lines)
+        print(f"[extract_json_from_markdown] Extracted JSON from markdown (length: {len(extracted_json)} chars)")
+        # Validate that we got actual JSON content
+        if extracted_json.strip().startswith('{') and extracted_json.strip().endswith('}'):
+            return extracted_json
+        else:
+            print(f"[extract_json_from_markdown] Warning: Extracted content doesn't look like JSON, using original")
+            return content
+    
+    # If no markdown blocks found, return original content
+    print(f"[extract_json_from_markdown] No JSON markdown block found, using original content")
+    return content
+
+
 def deep_research_output_cleanup(raw_json_str, client):
+    # First, try to extract JSON from markdown if present
+    extracted_content = extract_json_from_markdown(raw_json_str)
+    
     # lint and if error, passes to higher model to fix
-    errs = lint(raw_json_str)
+    errs = lint(extracted_content)
     print(f"[deep_research_output_cleanup] first lint: Errs: {errs}")
     if not errs:
-        return raw_json_str
+        return extracted_content
     else:
         current_provider = get_current_provider()
         print(f"[deep_research_output_cleanup] Trying to fix with chat model for {current_provider}")
-        fixed = guardian_fixer(raw_json_str, errs, client, high_model=False)
+        fixed = guardian_fixer(extracted_content, errs, client, high_model=False)
         errs2 = lint(fixed)
         if not errs2:
             return fixed
