@@ -105,46 +105,61 @@ st.markdown(f"# 📚 {display_name}")
 if project['status'] == 'processing' and project['job_id']:
     # Project is still being researched
     st.markdown("---")
-    
     col1, col2, col3 = st.columns([1, 3, 1])
     with col2:
-        st.markdown("## 🔬 Deep Research in Progress")
-        
+        st.markdown("## 🔬 Deep Research Status")
         st.info("""
-        Your personalized curriculum is being created. This typically takes 10-30 minutes depending on the topic complexity.
-        
+        Your personalized curriculum is being created. This may take 10-30 minutes or longer for complex topics.
         **You can safely navigate to other projects while this completes!**
         """)
-        
+
         # Progress messages
         progress_placeholder = st.empty()
-        
-        # Poll for completion
-        with st.spinner("Checking research status..."):
-            job_completed = check_and_complete_job(project_id, project['job_id'])
-            
-            if job_completed:
-                st.success("✅ Research complete! Your learning journey is ready.")
-                st.balloons()
-                time.sleep(2)
-                st.rerun()
+        job_status = None
+        job_content = None
+        # Check job status from temp file if Perplexity or fallback
+        import os, json
+        if project['job_id'].startswith("perplexity-") or project['job_id'].startswith("chat-"):
+            from pathlib import Path
+            temp_dir = Path.home() / '.autodidact' / 'temp_responses'
+            temp_file = temp_dir / f"{project['job_id']}.json"
+            if temp_file.exists():
+                with open(temp_file, 'r') as f:
+                    job_data = json.load(f)
+                job_status = job_data.get("status", "queued")
+                job_content = job_data.get("content")
             else:
-                # Show estimated time and auto-refresh
-                progress_placeholder.info("""
-                🔄 Research is still in progress...
-                
-                This page will automatically refresh every 10 seconds.
-                Feel free to explore other projects in the meantime!
-                """)
+                job_status = "queued"
+        else:
+            # OpenAI jobs: use DB polling
+            with st.spinner("Checking research status..."):
+                job_completed = check_and_complete_job(project_id, project['job_id'])
+                job_status = "completed" if job_completed else "processing"
 
-                if project['model_used'] != "o3":
-                    # this is a hack to get the user to retry with o3 if the job is taking too long
-                    if st.button("Taking too long? Retry with o3", type="primary"):
-                        retry_with_o3(st, project)
-                
-                # Auto-refresh
-                time.sleep(10)
+        # UI feedback based on job status
+        if job_status == "completed":
+            st.success("✅ Research complete! Your learning journey is ready.")
+            st.balloons()
+            time.sleep(2)
+            st.rerun()
+        elif job_status == "failed":
+            st.error(f"❌ Research failed: {job_content if job_content else 'Unknown error.'}")
+            if st.button("Retry Research", type="primary"):
+                # Optionally trigger a retry (could call start_deep_research_job again)
+                st.session_state.retry_job = True
                 st.rerun()
+        elif job_status == "queued":
+            progress_placeholder.info("🕒 Research job is queued and will start soon. Please wait...")
+            time.sleep(10)
+            st.rerun()
+        elif job_status == "processing":
+            progress_placeholder.info("🔄 Research is in progress... This page will auto-refresh every 10 seconds.")
+            time.sleep(10)
+            st.rerun()
+        else:
+            progress_placeholder.info(f"🔄 Research status: {job_status}. This page will auto-refresh every 10 seconds.")
+            time.sleep(10)
+            st.rerun()
 
 elif project['status'] == 'failed':
     # Research failed

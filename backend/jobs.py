@@ -439,55 +439,63 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
             return cleaned_job_id
             
         elif current_provider == "openrouter" and "perplexity" in research_model.lower():
-            # Perplexity approach: Direct request with long timeout (no background job)
-            print("[start_deep_research_job] Using Perplexity Sonar Deep Research (direct request, may take 4-5 minutes)...")
-            
-            # Generate a pseudo job ID for consistency with the database structure
-            import uuid
-            pseudo_job_id = f"perplexity-{str(uuid.uuid4())[:8]}"
-            
-            # Import timeout configuration
-            from utils.config import PERPLEXITY_DEEP_RESEARCH_TIMEOUT
-            
-            # Create OpenAI client with longer timeout for Perplexity
-            long_timeout_client = openai.OpenAI(
-                api_key=client.api_key,
-                base_url=client.base_url,
-                timeout=PERPLEXITY_DEEP_RESEARCH_TIMEOUT
-            )
-            
-            print(f"[start_deep_research_job] Starting Perplexity request with {PERPLEXITY_DEEP_RESEARCH_TIMEOUT}s timeout...")
-            response = long_timeout_client.chat.completions.create(
-                model=research_model,
-                messages=[
-                    {"role": "system", "content": DEVELOPER_PROMPT},
-                    {"role": "user", "content": user_message}
-                ],
-                temperature=0.7,
-                timeout=PERPLEXITY_DEEP_RESEARCH_TIMEOUT
-            )
-            
-            # Store the response in a way that can be retrieved later
-            response_content = response.choices[0].message.content
-            print(f"[start_deep_research_job] Perplexity request completed, storing result for pseudo job ID: {pseudo_job_id}")
-            
-            # Store the response temporarily (this will be picked up by the database polling)
-            # We'll use a simple approach: store in a temporary location
+            # Perplexity approach: Run in a background thread, immediately return job ID
+            print("[start_deep_research_job] Using Perplexity Sonar Deep Research (background thread)...")
+            import uuid, threading, json
             from pathlib import Path
+            pseudo_job_id = f"perplexity-{str(uuid.uuid4())[:8]}"
+            from utils.config import PERPLEXITY_DEEP_RESEARCH_TIMEOUT
             temp_dir = Path.home() / '.autodidact' / 'temp_responses'
             temp_dir.mkdir(parents=True, exist_ok=True)
             temp_file = temp_dir / f"{pseudo_job_id}.json"
-            
-            import json
+
+            # Write initial status as 'queued'
             with open(temp_file, 'w') as f:
                 json.dump({
-                    "status": "completed",
-                    "content": response_content,
+                    "status": "queued",
+                    "content": None,
                     "model": research_model,
                     "provider": current_provider
                 }, f)
-            
-            print(f"[start_deep_research_job] Perplexity response stored in {temp_file}")
+
+            def run_perplexity_job():
+                try:
+                    long_timeout_client = openai.OpenAI(
+                        api_key=client.api_key,
+                        base_url=client.base_url,
+                        timeout=PERPLEXITY_DEEP_RESEARCH_TIMEOUT
+                    )
+                    print(f"[Perplexity Thread] Starting request for {pseudo_job_id}")
+                    response = long_timeout_client.chat.completions.create(
+                        model=research_model,
+                        messages=[
+                            {"role": "system", "content": DEVELOPER_PROMPT},
+                            {"role": "user", "content": user_message}
+                        ],
+                        temperature=0.7,
+                        timeout=PERPLEXITY_DEEP_RESEARCH_TIMEOUT
+                    )
+                    response_content = response.choices[0].message.content
+                    with open(temp_file, 'w') as f:
+                        json.dump({
+                            "status": "completed",
+                            "content": response_content,
+                            "model": research_model,
+                            "provider": current_provider
+                        }, f)
+                    print(f"[Perplexity Thread] Completed and stored result for {pseudo_job_id}")
+                except Exception as e:
+                    with open(temp_file, 'w') as f:
+                        json.dump({
+                            "status": "failed",
+                            "content": str(e),
+                            "model": research_model,
+                            "provider": current_provider
+                        }, f)
+                    print(f"[Perplexity Thread] Failed for {pseudo_job_id}: {e}")
+
+            threading.Thread(target=run_perplexity_job, daemon=True).start()
+            print(f"[start_deep_research_job] Perplexity job {pseudo_job_id} started in background thread.")
             return pseudo_job_id
             
         else:
