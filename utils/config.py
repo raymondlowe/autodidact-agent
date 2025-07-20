@@ -7,10 +7,28 @@ import json
 import os
 from pathlib import Path
 from typing import Optional, Dict
+
 from dotenv import load_dotenv
+import logging
 
 # Load environment variables
 load_dotenv()
+
+# Logging configuration
+LOG_LEVEL = os.getenv("AUTODIDACT_LOG_LEVEL", "INFO").upper()
+LOG_FILE = os.getenv("AUTODIDACT_LOG_FILE", None)
+
+def configure_logging():
+    handlers = [logging.StreamHandler()]
+    if LOG_FILE:
+        handlers.append(logging.FileHandler(LOG_FILE))
+    logging.basicConfig(
+        level=getattr(logging, LOG_LEVEL, logging.INFO),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        handlers=handlers
+    )
+
+configure_logging()
 
 # Constants
 APP_NAME = "autodidact"

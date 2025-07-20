@@ -123,12 +123,22 @@ if project['status'] == 'processing' and project['job_id']:
             from pathlib import Path
             temp_dir = Path.home() / '.autodidact' / 'temp_responses'
             temp_file = temp_dir / f"{project['job_id']}.json"
+            logger.debug(f"Looking for temp file: {temp_file}")
             if temp_file.exists():
                 with open(temp_file, 'r') as f:
                     job_data = json.load(f)
+                logger.info(f"Loaded job data for {project['job_id']}: {job_data}")
                 job_status = job_data.get("status", "queued")
                 job_content = job_data.get("content")
+                logger.debug(f"Job status: {job_status}, content: {job_content}")
+                # Log OpenRouter/Perplexity metadata if present
+                meta = job_data.get("meta") or job_data.get("metadata")
+                if meta:
+                    logger.info(f"OpenRouter/Perplexity metadata for job {project['job_id']}: {meta}")
+                    for k, v in meta.items():
+                        logger.debug(f"Meta[{k}]: {v}")
             else:
+                logger.warning(f"Temp file {temp_file} does not exist for job_id={project['job_id']}")
                 job_status = "queued"
         else:
             # OpenAI jobs: use DB polling
@@ -149,7 +159,12 @@ if project['status'] == 'processing' and project['job_id']:
                 st.session_state.retry_job = True
                 st.rerun()
         elif job_status == "queued":
-            progress_placeholder.info("🕒 Research job is queued and will start soon. Please wait...")
+            provider = project.get('provider', 'openai')
+            if provider == 'openrouter' or provider == 'perplexity' or project['job_id'].startswith('perplexity-'):
+                msg = "🕒 Deep research is queued and will start soon using Perplexity/OpenRouter. Please wait while we contact the provider..."
+            else:
+                msg = "🕒 Deep research is queued and will start soon using OpenAI. Please wait while we contact the provider..."
+            progress_placeholder.info(msg)
             time.sleep(10)
             st.rerun()
         elif job_status == "processing":
@@ -188,71 +203,63 @@ elif project['status'] == 'failed':
 elif project['status'] == 'completed':
     # Normal workspace view
     st.markdown("---")
-    
-    # Two-column layout
-    col1, col2 = st.columns([1, 3])
-    
-    with col1:
-        # Session controls section
-        st.markdown("### 🎓 Learning Sessions")
-        
-        # Get available nodes
-        next_nodes = get_next_nodes(project_id)
-        
-        if next_nodes:
-            if len(next_nodes) == 1:
-                st.info(f"**Ready to learn:**\n\n📖 {next_nodes[0]['label']}")
-                if st.button("Start Session →", type="primary", use_container_width=True):
-                    # Create new session and navigate
-                    # FIXME: start with new session and work on getting this flow working
+
+    # Get available nodes
+    next_nodes = get_next_nodes(project_id)
+    logger.info(f"Project {project_id} status 'completed'. Next nodes: {next_nodes}")
+
+    # Main call-to-action area
+    st.markdown("## 🎓 Start Your Learning Session")
+    if next_nodes:
+        if len(next_nodes) == 1:
+            st.info(f"**Ready to learn:**\n\n📖 {next_nodes[0]['label']}")
+            if st.button("Start Session →", type="primary", use_container_width=True):
+                logger.info(f"Start Session button clicked for project_id={project_id}, node_id={next_nodes[0]['id']}")
+                try:
                     session_id = create_session(project_id, next_nodes[0]['id'])
+                    logger.info(f"Session created successfully: {session_id}")
                     st.session_state.selected_project_id = project_id
                     st.session_state.selected_session_id = session_id
                     st.switch_page("pages/session_detail.py")
-            else:
-                # Multiple options
-                st.info("**Choose your next topic:**")
-                selected = st.radio(
-                    "Available topics:",
-                    options=[n['id'] for n in next_nodes],
-                    format_func=lambda x: f"📖 {next(n['label'] for n in next_nodes if n['id'] == x)}",
-                    label_visibility="collapsed"
-                )
-                if st.button("Start Session →", type="primary", use_container_width=True):
-                    logger.info(f"Start Session button clicked for project_id={project_id}, selected_node={selected}")
-                    try:
-                        # Create new session and navigate
-                        logger.debug(f"Calling create_session with project_id={project_id}, node_id={selected}")
-                        session_id = create_session(project_id, selected)
-                        logger.info(f"Session created successfully: {session_id}")
-                        
-                        st.session_state.selected_project_id = project_id
-                        st.session_state.selected_session_id = session_id
-                        logger.debug(f"Session state updated, navigating to session_detail.py")
-                        st.switch_page("pages/session_detail.py")
-                    except Exception as e:
-                        logger.error(f"Error creating session: {type(e).__name__}: {str(e)}")
-                        logger.exception("Full traceback:")
-                        st.error(f"Failed to create session: {str(e)}")
+                except Exception as e:
+                    logger.error(f"Error creating session: {type(e).__name__}: {str(e)}")
+                    logger.exception("Full traceback:")
+                    st.error(f"Failed to create session: {str(e)}")
         else:
-            st.success("🎉 **Congratulations!**\n\nYou've completed all available topics!")
-            # Show completion stats
-            stats = get_session_stats(project_id)
-            if stats["total_sessions"] > 0:
-                st.metric("Average Score", f"{int(stats['average_score'] * 100)}%")
-        
-        st.markdown("---")
-        
-        # Collapsible report viewer
-        with st.expander("📄 References", expanded=False):
-            try:
-                # Load report and resources
-                report_path = Path(project['report_path'])
-                if report_path.exists():
-                    report_md = report_path.read_text(encoding='utf-8')
-                    formatted_report = report_md
-                    
-                    # Add custom CSS for better report styling
+            st.info("**Choose your next topic:**")
+            selected = st.radio(
+                "Available topics:",
+                options=[n['id'] for n in next_nodes],
+                format_func=lambda x: f"📖 {next(n['label'] for n in next_nodes if n['id'] == x)}",
+                label_visibility="collapsed"
+            )
+            if st.button("Start Session →", type="primary", use_container_width=True):
+                logger.info(f"Start Session button clicked for project_id={project_id}, selected_node={selected}")
+                try:
+                    session_id = create_session(project_id, selected)
+                    logger.info(f"Session created successfully: {session_id}")
+                    st.session_state.selected_project_id = project_id
+                    st.session_state.selected_session_id = session_id
+                    st.switch_page("pages/session_detail.py")
+                except Exception as e:
+                    logger.error(f"Error creating session: {type(e).__name__}: {str(e)}")
+                    logger.exception("Full traceback:")
+                    st.error(f"Failed to create session: {str(e)}")
+    else:
+        st.warning("No topics are available to start a session. Please check your project setup or try refreshing.")
+        logger.warning(f"No available topics for project_id={project_id} after research completion.")
+
+    st.markdown("---")
+
+    # Collapsible report viewer
+    with st.expander("📄 References", expanded=False):
+        try:
+            # Load report and resources
+            report_path = Path(project['report_path'])
+            if report_path.exists():
+                report_md = report_path.read_text(encoding='utf-8')
+                formatted_report = report_md
+                # Add custom CSS for better report styling
                     st.markdown("""
                     <style>
                     .report-content {

@@ -2,6 +2,8 @@ openai
 streamlit
 networkx
 jsonschema
-pandas
-numpy
 python-dotenv
+Levenshtein
+langchain-openai
+graphviz
+pydantic

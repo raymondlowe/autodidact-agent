@@ -18,6 +18,7 @@ Autodidact is an AI-powered personalized learning assistant that creates custom 
 
 ## Installation
 
+
 ### Option 1: Docker (Recommended)
 
 The easiest way to run Autodidact is using Docker:
@@ -28,7 +29,12 @@ git clone https://github.com/yourusername/autodidact.git
 cd autodidact
 ```
 
-2. Run with Docker Compose:
+2. Build the Docker image locally (since it is not published on Docker Hub):
+```bash
+docker build -t autodidact-agent .
+```
+
+3. Run with Docker Compose:
 ```bash
 docker compose up
 ```

@@ -6,12 +6,15 @@ Contains: clarifier agent, deep research wrapper, grader, and tutor nodes
 import json
 import re
 import time
+import logging
 from typing import Dict, List, Optional
 import openai
 from openai import OpenAI
 from utils.config import load_api_key, get_current_provider
 from utils.providers import create_client, get_model_for_task, get_provider_info, ProviderError, get_api_call_params
 from utils.deep_research import TOPIC_CLARIFYING_PROMPT, TOPIC_REWRITING_PROMPT
+
+logger = logging.getLogger(__name__)
 
 
 # Constants for retry logic
@@ -22,28 +25,26 @@ RETRY_DELAY = 2  # seconds
 def retry_api_call(func, *args, max_retries=MAX_RETRIES, **kwargs):
     """Retry API calls with exponential backoff"""
     last_error = None
-    
     for attempt in range(max_retries):
         try:
             return func(*args, **kwargs)
         except openai.RateLimitError as e:
             wait_time = RETRY_DELAY * (2 ** attempt)
-            print(f"Rate limit hit, waiting {wait_time} seconds...")
+            logger.warning(f"Rate limit hit, waiting {wait_time} seconds...")
             time.sleep(wait_time)
             last_error = e
         except openai.APIError as e:
             if attempt < max_retries - 1:
                 wait_time = RETRY_DELAY * (2 ** attempt)
-                print(f"API error, retrying in {wait_time} seconds...")
+                logger.warning(f"API error, retrying in {wait_time} seconds...")
                 time.sleep(wait_time)
                 last_error = e
             else:
                 raise
         except Exception as e:
-            # Don't retry on non-API errors
+            logger.error(f"Non-API error during API call: {type(e).__name__}: {str(e)}")
             raise
-    
-    # If we get here, all retries failed
+    logger.error(f"Failed after {max_retries} attempts. Last error: {str(last_error)}")
     raise RuntimeError(f"Failed after {max_retries} attempts. Last error: {str(last_error)}")
 
 
@@ -59,24 +60,25 @@ def clarify_topic(topic: str, hours: Optional[int] = None) -> List[str]:
     Returns:
         List of clarifying questions
     """
-    print(f"\n[clarify_topic] Starting clarification for topic: '{topic}'")
+    logger.info(f"Starting clarification for topic: '{topic}'")
     if hours:
-        print(f"[clarify_topic] User wants to invest {hours} hours")
-    
+        logger.info(f"User wants to invest {hours} hours")
+
     # Create client using provider abstraction
     try:
         client = create_client()
     except ProviderError as e:
+        logger.error(f"Provider configuration error: {str(e)}")
         raise ValueError(f"Provider configuration error: {str(e)}")
-    
+
     # Prepare user message
     user_msg = f"Topic: {topic}"
     if hours:
         user_msg += f"\nTime investment: {hours} hours"
-    
-    print(f"[clarify_topic] Using model: {get_model_for_task('chat')}")
-    print(f"[clarify_topic] User message: {user_msg}")
-    
+
+    logger.info(f"Using model: {get_model_for_task('chat')}")
+    logger.debug(f"User message: {user_msg}")
+
     try:
         # Call API with retry logic using chat model
         def make_clarifier_call():
@@ -89,52 +91,48 @@ def clarify_topic(topic: str, hours: Optional[int] = None) -> List[str]:
                 temperature=0.7
             )
             return client.chat.completions.create(**params)
-        
-        print("[clarify_topic] Making API call...")
+
+        logger.info("Making API call for topic clarification...")
         response = retry_api_call(make_clarifier_call)
-        
+
         # Extract the response content
         questions_text = response.choices[0].message.content.strip()
-        print(f"[clarify_topic] Raw response:\n{questions_text}")
-        
+        logger.debug(f"Raw response:\n{questions_text}")
+
         # Parse the questions from the response
-        # The response should be in bullet format, so we'll extract bullet points
         questions = []
         lines = questions_text.split('\n')
         for line in lines:
             line = line.strip()
-            # Look for lines that start with bullets or numbers
             if line and (line.startswith('-') or line.startswith('•') or line.startswith('*') or 
                         (len(line) > 2 and line[0].isdigit() and line[1] in '.)')):
-                # Clean up the bullet/number prefix
                 question = re.sub(r'^[-•*\d.)\s]+', '', line).strip()
                 if question:
                     questions.append(question)
-        
-        # If no bullets found, try to split by sentence-ending punctuation
+
         if not questions:
-            print("[clarify_topic] No bullet points found, trying to split by sentences")
+            logger.info("No bullet points found, trying to split by sentences")
             sentences = re.split(r'[?!.]\s+', questions_text)
             questions = [s.strip() + '?' if not s.strip().endswith('?') else s.strip() 
                         for s in sentences if s.strip() and len(s.strip()) > 10]
-        
-        print(f"[clarify_topic] Extracted {len(questions)} questions")
+
+        logger.info(f"Extracted {len(questions)} questions")
         for i, q in enumerate(questions, 1):
-            print(f"[clarify_topic]   Q{i}: {q}")
-        
+            logger.debug(f"Q{i}: {q}")
+
         return questions
-        
+
     except openai.AuthenticationError:
-        print("[clarify_topic] ERROR: Authentication failed")
+        logger.error("Authentication failed")
         raise RuntimeError("Invalid API key. Please check your API key configuration.")
     except openai.PermissionDeniedError:
-        print("[clarify_topic] ERROR: Permission denied")
+        logger.error("Permission denied")
         raise RuntimeError("API key doesn't have access to the required model.")
     except ProviderError as e:
-        print(f"[clarify_topic] ERROR: Provider error: {str(e)}")
+        logger.error(f"Provider error: {str(e)}")
         raise RuntimeError(f"Provider configuration error: {str(e)}")
     except Exception as e:
-        print(f"[clarify_topic] ERROR: {type(e).__name__}: {str(e)}")
+        logger.error(f"Clarifier API call failed: {type(e).__name__}: {str(e)}")
         raise RuntimeError(f"Clarifier API call failed: {str(e)}")
 
 
