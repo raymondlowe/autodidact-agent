@@ -128,6 +128,14 @@ if project['status'] == 'processing' and project['job_id']:
                     job_data = json.load(f)
                 job_status = job_data.get("status", "queued")
                 job_content = job_data.get("content")
+                
+                # If the job is completed, process it through check_and_complete_job
+                if job_status == "completed":
+                    with st.spinner("Processing completed research..."):
+                        job_completed = check_and_complete_job(project_id, project['job_id'])
+                        if not job_completed:
+                            job_status = "failed"
+                            job_content = "Failed to process completed research results"
             else:
                 job_status = "queued"
         else:

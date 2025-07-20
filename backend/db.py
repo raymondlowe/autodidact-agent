@@ -305,6 +305,8 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
         provider_info = get_provider_info(current_provider)
         
         # Handle different job types based on job_id format
+        temp_file_to_cleanup = None  # Track temp file for cleanup after successful processing
+        
         if clean_job_id_value.startswith("perplexity-") or clean_job_id_value.startswith("chat-"):
             # Handle pseudo job IDs (Perplexity or fallback responses)
             print(f"[check_and_complete_job] Processing pseudo job ID {clean_job_id_value}")
@@ -326,15 +328,16 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
                     update_project_status(project_id, 'failed')
                     return True
                 
-                # Clean up temp file after reading
-                temp_file.unlink()
-                print(f"[check_and_complete_job] Processed and cleaned up temp file for {clean_job_id_value}")
+                # Mark file for cleanup after successful processing
+                temp_file_to_cleanup = temp_file
+                print(f"[check_and_complete_job] Loaded content from temp file {clean_job_id_value}, will cleanup after processing")
             else:
                 print(f"[check_and_complete_job] Temp file not found for {clean_job_id_value}, job may still be processing")
                 return False
                 
         elif current_provider == "openai":
             # Handle OpenAI background jobs
+            temp_file_to_cleanup = None  # No temp file for OpenAI jobs
             print(f"[check_and_complete_job] Checking OpenAI background job {clean_job_id_value}")
             job = client.responses.retrieve(clean_job_id_value)
             
@@ -358,6 +361,7 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
                 return False
         else:
             # Legacy handling for old job format
+            temp_file_to_cleanup = None  # No temp file for legacy jobs
             print(f"[check_and_complete_job] Using legacy handling for job {clean_job_id_value}")
             json_str = clean_job_id_value
         
@@ -374,6 +378,9 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
             data = json.loads(json_str)
         except json.JSONDecodeError as e:
             print(f"[check_and_complete_job] Failed to parse JSON: {e}")
+            print(f"[check_and_complete_job] JSON content preview (first 500 chars): {json_str[:500]}")
+            if temp_file_to_cleanup:
+                print(f"[check_and_complete_job] Preserving temp file for debugging: {temp_file_to_cleanup}")
             update_project_status(project_id, 'failed')
             return True
         
@@ -403,7 +410,10 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
                 
         else:
             # missing data. should we just throw an error here?
-            print("Invalid/empty data returned from deep research")
+            print("[check_and_complete_job] Invalid/empty data returned from deep research")
+            print(f"[check_and_complete_job] Data keys found: {list(data.keys()) if isinstance(data, dict) else 'Not a dict'}")
+            if temp_file_to_cleanup:
+                print(f"[check_and_complete_job] Preserving temp file for debugging: {temp_file_to_cleanup}")
             update_project_status(project_id, 'failed')
             return True
 
@@ -443,12 +453,19 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
             status='completed'
         )
         
+        # Clean up temp file after successful processing
+        if temp_file_to_cleanup and temp_file_to_cleanup.exists():
+            temp_file_to_cleanup.unlink()
+            print(f"[check_and_complete_job] Successfully cleaned up temp file for {clean_job_id_value}")
+        
         print(f"[check_and_complete_job] Project {project_id} updated successfully")
         return True
             
     except Exception as e:
         print(f"[check_and_complete_job] Error checking job: {e}")
-        # Don't mark as failed on transient errors
+        # Don't mark as failed on transient errors, leave temp file for debugging
+        if temp_file_to_cleanup and temp_file_to_cleanup.exists():
+            print(f"[check_and_complete_job] Preserving temp file for debugging: {temp_file_to_cleanup}")
         return False
     
 def check_job(job_id: str) -> bool:
