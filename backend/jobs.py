@@ -90,10 +90,13 @@ def clarify_topic(topic: str, hours: Optional[int] = None) -> List[str]:
                 ],
                 temperature=0.7
             )
+            logger.info(f"[API CALL] Reason: Topic clarification | Model: {params.get('model')} | Provider: {get_provider_info(params.get('model', 'openai')).get('name', 'unknown')}")
             return client.chat.completions.create(**params)
 
         logger.info("Making API call for topic clarification...")
         response = retry_api_call(make_clarifier_call)
+        meta = getattr(response, 'meta', None) or getattr(response, 'metadata', None) or {}
+        logger.info(f"[API RETURN] Topic clarification complete | Model: {get_model_for_task('chat')} | Tokens: {getattr(response, 'usage', {}).get('total_tokens', 'n/a')} | Price: {meta.get('price', 'n/a')} | Meta: {meta}")
 
         # Extract the response content
         questions_text = response.choices[0].message.content.strip()
@@ -182,10 +185,13 @@ Clarifying questions:
                 ],
                 temperature=0.7
             )
+            logger.info(f"[API CALL] Reason: Topic rewriting | Model: {params.get('model')} | Provider: {get_provider_info(params.get('model', 'openai')).get('name', 'unknown')}")
             return client.chat.completions.create(**params)
-        
-        print("[rewrite_topic] Making API call...")
+
+        logger.info("Making API call for topic rewriting...")
         response = retry_api_call(make_rewriter_call)
+        meta = getattr(response, 'meta', None) or getattr(response, 'metadata', None) or {}
+        logger.info(f"[API RETURN] Topic rewriting complete | Model: {get_model_for_task('chat')} | Tokens: {getattr(response, 'usage', {}).get('total_tokens', 'n/a')} | Price: {meta.get('price', 'n/a')} | Meta: {meta}")
         
         # Extract the rewritten topic
         rewritten_topic = response.choices[0].message.content.strip()
@@ -245,9 +251,13 @@ def process_clarification_responses(questions: List[str], responses: List[str]) 
                 ],
                 temperature=0.7
             )
+            logger.info(f"[API CALL] Reason: Topic refinement | Model: {params.get('model')} | Provider: {get_provider_info(params.get('model', 'openai')).get('name', 'unknown')}")
             return client.chat.completions.create(**params)
-        
+
+        logger.info("Making API call for topic refinement...")
         response = retry_api_call(make_refinement_call)
+        meta = getattr(response, 'meta', None) or getattr(response, 'metadata', None) or {}
+        logger.info(f"[API RETURN] Topic refinement complete | Model: {get_model_for_task('chat')} | Tokens: {getattr(response, 'usage', {}).get('total_tokens', 'n/a')} | Price: {meta.get('price', 'n/a')} | Meta: {meta}")
         return response.choices[0].message.content.strip()
         
     except Exception as e:
@@ -359,9 +369,10 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
     Returns:
         str: The job ID for polling (OpenAI) or pseudo-ID for immediate execution (Perplexity)
     """
-    print(f"\n[start_deep_research_job] Starting job for topic: '{topic}'")
-    if hours:
-        print(f"[start_deep_research_job] Hours: {hours}")
+    logger.info(f"[API CALL] Reason: Start deep research | Topic: {topic} | Hours: {hours if hours else 'n/a'}")
+        logger.info(f"[API CALL] Reason: Start deep research | Topic: {topic} | Hours: {hours if hours else 'n/a'}")
+        if hours:
+            logger.info(f"User wants to invest {hours} hours")
     
     # Create client using provider abstraction
     try:
@@ -379,11 +390,11 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
             research_model = research_model or get_model_for_task("deep_research")
         except ProviderError:
             # Fallback to chat model if deep research not available
-            print(f"[start_deep_research_job] Deep research model not available for {current_provider}, using chat model")
+            logger.info(f"Deep research model not available for {current_provider}, using chat model")
             research_model = research_model or get_model_for_task("chat")
         
-        print(f"[start_deep_research_job] Using provider: {current_provider}")
-        print(f"[start_deep_research_job] Using model: {research_model}")
+        logger.info(f"Using provider: {current_provider}")
+        logger.info(f"Using model: {research_model}")
         
         # Check if this provider supports deep research features
         provider_info = get_provider_info(current_provider)
@@ -400,10 +411,12 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
         if oldAttemptSalvagedTxt:
             user_message += "\n\n"+oldAttemptSalvagedTxt
         
-        print(f"[start_deep_research_job] User message: {user_message}")
+        logger.debug(f"User message: {user_message}")
         
         # Handle different provider approaches
         if current_provider == "openai" and supports_deep_research:
+            logger.info(f"[API CALL] Using provider: {current_provider}")
+            logger.info(f"[API CALL] Using model: {research_model}")
             # OpenAI approach: Use background jobs with responses.create()
             input_messages = [
                 {
@@ -419,7 +432,7 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
             # Tools configuration
             tools = [{"type": "web_search_preview"}]
             
-            print("[start_deep_research_job] Submitting OpenAI deep-research background job...")
+            logger.info("Submitting OpenAI deep-research background job...")
             resp = client.responses.create(
                 model=research_model,
                 background=True,
@@ -427,18 +440,22 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
                 tools=tools,
                 reasoning={"summary": "auto"},
             )
+            meta = getattr(resp, 'meta', None) or getattr(resp, 'metadata', None) or {}
+            logger.info(f"[API RETURN] Deep research job submitted | Model: {research_model} | Job ID: {resp.id} | Tokens: {getattr(resp, 'usage', {}).get('total_tokens', 'n/a')} | Price: {meta.get('price', 'n/a')} | Meta: {meta}")
             
             job_id = resp.id
             # Clean the job ID in case it contains control characters
             from backend.db import clean_job_id
             cleaned_job_id = clean_job_id(job_id)
-            print(f"[start_deep_research_job] OpenAI job submitted successfully with ID: {cleaned_job_id}")
+            logger.info(f"OpenAI job submitted successfully with ID: {cleaned_job_id}")
             
             return cleaned_job_id
             
         elif current_provider == "openrouter" and "perplexity" in research_model.lower():
             # Perplexity approach: Run in a background thread, immediately return job ID
             print("[start_deep_research_job] Using Perplexity Sonar Deep Research (background thread)...")
+            logger.info(f"[API CALL] Using provider: {current_provider}")
+            logger.info(f"[API CALL] Using model: {research_model}")
             import uuid, threading, json
             from pathlib import Path
             pseudo_job_id = f"perplexity-{str(uuid.uuid4())[:8]}"
@@ -463,7 +480,7 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
                         base_url=client.base_url,
                         timeout=PERPLEXITY_DEEP_RESEARCH_TIMEOUT
                     )
-                    print(f"[Perplexity Thread] Starting request for {pseudo_job_id}")
+                    logger.info(f"[API CALL] Reason: Perplexity deep research | Model: {research_model} | Provider: {current_provider} | Job ID: {pseudo_job_id}")
                     response = long_timeout_client.chat.completions.create(
                         model=research_model,
                         messages=[
@@ -473,6 +490,8 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
                         temperature=0.7,
                         timeout=PERPLEXITY_DEEP_RESEARCH_TIMEOUT
                     )
+                    meta = getattr(response, 'meta', None) or getattr(response, 'metadata', None) or {}
+                    logger.info(f"[API RETURN] Perplexity deep research complete | Model: {research_model} | Job ID: {pseudo_job_id} | Tokens: {getattr(response, 'usage', {}).get('total_tokens', 'n/a')} | Price: {meta.get('price', 'n/a')} | Meta: {meta}")
                     response_content = response.choices[0].message.content
                     with open(temp_file, 'w') as f:
                         json.dump({
@@ -481,7 +500,7 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
                             "model": research_model,
                             "provider": current_provider
                         }, f)
-                    print(f"[Perplexity Thread] Completed and stored result for {pseudo_job_id}")
+                    logger.info(f"Completed and stored result for {pseudo_job_id}")
                 except Exception as e:
                     with open(temp_file, 'w') as f:
                         json.dump({
@@ -490,15 +509,15 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
                             "model": research_model,
                             "provider": current_provider
                         }, f)
-                    print(f"[Perplexity Thread] Failed for {pseudo_job_id}: {e}")
+                    logger.error(f"[API RETURN] Perplexity deep research failed | Model: {research_model} | Job ID: {pseudo_job_id} | Error: {e}")
 
             threading.Thread(target=run_perplexity_job, daemon=True).start()
-            print(f"[start_deep_research_job] Perplexity job {pseudo_job_id} started in background thread.")
+            logger.info(f"Perplexity job {pseudo_job_id} started in background thread.")
             return pseudo_job_id
             
         else:
             # Fallback approach: Use regular chat completion
-            print(f"[start_deep_research_job] Using fallback chat completion for {current_provider}...")
+            logger.info(f"[API CALL] Reason: Fallback chat completion | Model: {research_model} | Provider: {current_provider}")
             params = get_api_call_params(
                 model=research_model,
                 messages=[
@@ -508,6 +527,8 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
                 temperature=0.7
             )
             response = client.chat.completions.create(**params)
+            meta = getattr(response, 'meta', None) or getattr(response, 'metadata', None) or {}
+            logger.info(f"[API RETURN] Fallback chat completion complete | Model: {research_model} | Tokens: {getattr(response, 'usage', {}).get('total_tokens', 'n/a')} | Price: {meta.get('price', 'n/a')} | Meta: {meta}")
             
             # Generate a pseudo job ID and store response
             import uuid
