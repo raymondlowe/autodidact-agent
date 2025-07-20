@@ -46,6 +46,10 @@ PERPLEXITY_DEEP_RESEARCH_TIMEOUT = 300  # 5 minutes for Perplexity Sonar Deep Re
 # Mastery settings
 MASTERY_THRESHOLD = 0.7
 
+# App Attribution settings for OpenRouter
+APP_NAME = "Autodidact Agent"
+APP_URL = "https://github.com/raymondlowe/autodidact-agent"
+
 
 def ensure_config_directory():
     """Ensure configuration directory exists with proper permissions"""

@@ -10,7 +10,7 @@ from typing import Dict, Optional
 import openai
 from openai import OpenAI
 from utils.config import DEEP_RESEARCH_POLL_INTERVAL
-from utils.providers import create_client, get_model_for_task, get_current_provider, get_provider_info
+from utils.providers import create_client, get_model_for_task, get_current_provider, get_provider_info, get_api_call_params
 
 import jsonschema, networkx as nx, Levenshtein
 
@@ -269,11 +269,12 @@ def guardian_fixer(raw_json_str, error_bullets, client, high_model=False):
         chat_model = get_model_for_task("chat")
         print(f"[deep_research_output_cleanup] Model: {chat_model}")
         start = time.perf_counter()
-        resp = client.chat.completions.create(
+        params = get_api_call_params(
             model=chat_model,
             messages=[{"role": "user", "content": prompt}],
             temperature=0.1
         )
+        resp = client.chat.completions.create(**params)
         elapsed = time.perf_counter() - start
         print(f"Guardian pass finished in {elapsed:.2f} s")
         return resp.choices[0].message.content
