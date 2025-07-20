@@ -11,6 +11,9 @@ from utils.config import (
 from utils.providers import validate_api_key, get_provider_info, list_available_models
 from pathlib import Path
 
+# Ensure internal Streamlit assets load from root, not under /settings/
+st.markdown('<base href="/">', unsafe_allow_html=True)
+
 # Page header
 st.markdown("# ⚙️ Settings")
 st.markdown("Manage your Autodidact configuration")
@@ -266,4 +269,4 @@ st.markdown("""
 <div style='text-align: center; color: #888; font-size: 0.9rem;'>
     Made with ❤️ for autodidacts everywhere
 </div>
-""", unsafe_allow_html=True) 
+""", unsafe_allow_html=True)
