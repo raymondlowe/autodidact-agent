@@ -10,7 +10,7 @@ from typing import Dict, List, Optional
 import openai
 from openai import OpenAI
 from utils.config import load_api_key, get_current_provider
-from utils.providers import create_client, get_model_for_task, get_provider_info, ProviderError
+from utils.providers import create_client, get_model_for_task, get_provider_info, ProviderError, get_api_call_params
 from utils.deep_research import TOPIC_CLARIFYING_PROMPT, TOPIC_REWRITING_PROMPT
 
 
@@ -80,14 +80,15 @@ def clarify_topic(topic: str, hours: Optional[int] = None) -> List[str]:
     try:
         # Call API with retry logic using chat model
         def make_clarifier_call():
-            return client.chat.completions.create(
-                model=get_model_for_task("chat"),  # Use provider-specific chat model
+            params = get_api_call_params(
+                model=get_model_for_task("chat"),
                 messages=[
                     {"role": "system", "content": TOPIC_CLARIFYING_PROMPT},
                     {"role": "user", "content": user_msg}
                 ],
                 temperature=0.7
             )
+            return client.chat.completions.create(**params)
         
         print("[clarify_topic] Making API call...")
         response = retry_api_call(make_clarifier_call)
@@ -175,14 +176,15 @@ Clarifying questions:
     
     try:
         def make_rewriter_call():
-            return client.chat.completions.create(
-                model=get_model_for_task("chat"),  # Use provider-specific chat model
+            params = get_api_call_params(
+                model=get_model_for_task("chat"),
                 messages=[
                     {"role": "system", "content": TOPIC_REWRITING_PROMPT},
                     {"role": "user", "content": formatted_content}
                 ],
                 temperature=0.7
             )
+            return client.chat.completions.create(**params)
         
         print("[rewrite_topic] Making API call...")
         response = retry_api_call(make_rewriter_call)
@@ -237,7 +239,7 @@ def process_clarification_responses(questions: List[str], responses: List[str]) 
     
     try:
         def make_refinement_call():
-            return client.chat.completions.create(
+            params = get_api_call_params(
                 model=get_model_for_task("chat"),
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that refines learning topics based on user input."},
@@ -245,6 +247,7 @@ def process_clarification_responses(questions: List[str], responses: List[str]) 
                 ],
                 temperature=0.7
             )
+            return client.chat.completions.create(**params)
         
         response = retry_api_call(make_refinement_call)
         return response.choices[0].message.content.strip()
@@ -490,7 +493,7 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
         else:
             # Fallback approach: Use regular chat completion
             print(f"[start_deep_research_job] Using fallback chat completion for {current_provider}...")
-            response = client.chat.completions.create(
+            params = get_api_call_params(
                 model=research_model,
                 messages=[
                     {"role": "system", "content": DEVELOPER_PROMPT},
@@ -498,6 +501,7 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
                 ],
                 temperature=0.7
             )
+            response = client.chat.completions.create(**params)
             
             # Generate a pseudo job ID and store response
             import uuid
