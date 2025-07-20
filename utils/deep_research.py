@@ -175,7 +175,7 @@ SCHEMA = {
           "id":{"type":"string"},
           "title":{"type":"string"},
           "prerequisite_node_ids":{"type":"array","items":{"type":"string"}},
-          "learning_objectives":{"type":"array","minItems":3,"maxItems":9},
+          "learning_objectives":{"type":"array","minItems":2,"maxItems":9},
           "resource_pointers":{"type":"array",
               "items":{"type":"object",
                        "required":["rid","section"],
