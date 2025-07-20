@@ -4,8 +4,12 @@ FROM python:3.12-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies including curl for healthcheck
 RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    software-properties-common \
+    git \
     graphviz \
     && rm -rf /var/lib/apt/lists/*
 
@@ -24,6 +28,9 @@ RUN mkdir -p /app/data
 # Expose Streamlit port
 EXPOSE 8501
 
+# Add healthcheck as recommended by Streamlit documentation
+HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health
+
 # Set environment variable for Streamlit
 ENV STREAMLIT_SERVER_ADDRESS=0.0.0.0
 ENV STREAMLIT_SERVER_PORT=8501
@@ -36,5 +43,5 @@ USER app
 # Set home directory for the app user so .autodidact folder is created correctly
 ENV HOME=/app/data
 
-# Run the application
-CMD ["streamlit", "run", "app.py", "--server.address=0.0.0.0", "--server.port=8501"]
+# Run the application using ENTRYPOINT as recommended by Streamlit
+ENTRYPOINT ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
