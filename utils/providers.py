@@ -148,12 +148,12 @@ def get_provider_info(provider: str) -> Dict:
         },
         "openrouter": {
             "name": "OpenRouter",
-            "description": "Access to multiple AI models including Claude, Gemini, and more",
+            "description": "Access to multiple AI models including Claude, Gemini, and Perplexity Sonar Deep Research",
             "api_key_prefix": "sk-or-",
             "signup_url": "https://openrouter.ai/keys",
             "pricing_url": "https://openrouter.ai/models",
-            "supports_deep_research": False,  # No equivalent to OpenAI's deep research
-            "supports_web_search": False,    # Depends on specific model
+            "supports_deep_research": True,   # Now supports via Perplexity Sonar Deep Research
+            "supports_web_search": True,     # Via Perplexity models
         }
     }
     

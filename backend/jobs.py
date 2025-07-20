@@ -351,14 +351,15 @@ def process_clarification_responses(questions: List[str], responses: List[str]) 
 def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptSalvagedTxt: str = None, research_model: str = None) -> str:
     """
     Start a deep research job and return the job_id immediately.
-    The job will run in the background on OpenAI's servers.
+    For OpenAI: Uses background jobs that run on their servers.
+    For Perplexity: Creates a pseudo job_id and executes immediately (may take 4-5 minutes).
     
     Args:
         topic: The learning topic (already refined/rewritten)
         hours: Optional number of hours the user wants to invest
         
     Returns:
-        str: The job ID for polling
+        str: The job ID for polling (OpenAI) or pseudo-ID for immediate execution (Perplexity)
     """
     print(f"\n[start_deep_research_job] Starting job for topic: '{topic}'")
     if hours:
@@ -390,9 +391,6 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
         provider_info = get_provider_info(current_provider)
         supports_deep_research = provider_info.get("supports_deep_research", False)
         
-        if not supports_deep_research:
-            print(f"[start_deep_research_job] Warning: {current_provider} does not support OpenAI-style deep research. Using regular chat completion.")
-        
         # Prepare the user message with optional hours
         user_message = f"Topic: {topic}"
         if hours:
@@ -406,9 +404,9 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
         
         print(f"[start_deep_research_job] User message: {user_message}")
         
-        # For providers that support deep research (OpenAI), use the full format
-        if supports_deep_research:
-            # Build input messages for deep research
+        # Handle different provider approaches
+        if current_provider == "openai" and supports_deep_research:
+            # OpenAI approach: Use background jobs with responses.create()
             input_messages = [
                 {
                     "role": "developer",
@@ -423,7 +421,7 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
             # Tools configuration
             tools = [{"type": "web_search_preview"}]
             
-            print("[start_deep_research_job] Submitting deep-research job...")
+            print("[start_deep_research_job] Submitting OpenAI deep-research background job...")
             resp = client.responses.create(
                 model=research_model,
                 background=True,
@@ -436,12 +434,65 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
             # Clean the job ID in case it contains control characters
             from backend.db import clean_job_id
             cleaned_job_id = clean_job_id(job_id)
-            print(f"[start_deep_research_job] Job submitted successfully with ID: {cleaned_job_id}")
+            print(f"[start_deep_research_job] OpenAI job submitted successfully with ID: {cleaned_job_id}")
             
             return cleaned_job_id
+            
+        elif current_provider == "openrouter" and "perplexity" in research_model.lower():
+            # Perplexity approach: Direct request with long timeout (no background job)
+            print("[start_deep_research_job] Using Perplexity Sonar Deep Research (direct request, may take 4-5 minutes)...")
+            
+            # Generate a pseudo job ID for consistency with the database structure
+            import uuid
+            pseudo_job_id = f"perplexity-{str(uuid.uuid4())[:8]}"
+            
+            # Import timeout configuration
+            from utils.config import PERPLEXITY_DEEP_RESEARCH_TIMEOUT
+            
+            # Create OpenAI client with longer timeout for Perplexity
+            long_timeout_client = openai.OpenAI(
+                api_key=client.api_key,
+                base_url=client.base_url,
+                timeout=PERPLEXITY_DEEP_RESEARCH_TIMEOUT
+            )
+            
+            print(f"[start_deep_research_job] Starting Perplexity request with {PERPLEXITY_DEEP_RESEARCH_TIMEOUT}s timeout...")
+            response = long_timeout_client.chat.completions.create(
+                model=research_model,
+                messages=[
+                    {"role": "system", "content": DEVELOPER_PROMPT},
+                    {"role": "user", "content": user_message}
+                ],
+                temperature=0.7,
+                timeout=PERPLEXITY_DEEP_RESEARCH_TIMEOUT
+            )
+            
+            # Store the response in a way that can be retrieved later
+            response_content = response.choices[0].message.content
+            print(f"[start_deep_research_job] Perplexity request completed, storing result for pseudo job ID: {pseudo_job_id}")
+            
+            # Store the response temporarily (this will be picked up by the database polling)
+            # We'll use a simple approach: store in a temporary location
+            from pathlib import Path
+            temp_dir = Path.home() / '.autodidact' / 'temp_responses'
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            temp_file = temp_dir / f"{pseudo_job_id}.json"
+            
+            import json
+            with open(temp_file, 'w') as f:
+                json.dump({
+                    "status": "completed",
+                    "content": response_content,
+                    "model": research_model,
+                    "provider": current_provider
+                }, f)
+            
+            print(f"[start_deep_research_job] Perplexity response stored in {temp_file}")
+            return pseudo_job_id
+            
         else:
-            # For other providers, use regular chat completion
-            print("[start_deep_research_job] Using regular chat completion for research...")
+            # Fallback approach: Use regular chat completion
+            print(f"[start_deep_research_job] Using fallback chat completion for {current_provider}...")
             params = get_api_call_params(
                 model=research_model,
                 messages=[
@@ -452,8 +503,26 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
             )
             response = client.chat.completions.create(**params)
             
-            # Return the response content directly since we can't do background jobs
-            return response.choices[0].message.content
+            # Generate a pseudo job ID and store response
+            import uuid
+            pseudo_job_id = f"chat-{str(uuid.uuid4())[:8]}"
+            
+            # Store the response temporarily
+            from pathlib import Path
+            temp_dir = Path.home() / '.autodidact' / 'temp_responses'
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            temp_file = temp_dir / f"{pseudo_job_id}.json"
+            
+            import json
+            with open(temp_file, 'w') as f:
+                json.dump({
+                    "status": "completed",
+                    "content": response.choices[0].message.content,
+                    "model": research_model,
+                    "provider": current_provider
+                }, f)
+            
+            return pseudo_job_id
         
     except openai.AuthenticationError:
         print("[start_deep_research_job] ERROR: Authentication failed")
@@ -461,6 +530,9 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
     except openai.PermissionDeniedError:
         print("[start_deep_research_job] ERROR: Permission denied")
         raise RuntimeError("API key doesn't have access to the required model.")
+    except openai.APITimeoutError:
+        print("[start_deep_research_job] ERROR: Request timeout")
+        raise RuntimeError("Deep research request timed out. Perplexity requests can take 4-5 minutes.")
     except ProviderError as e:
         print(f"[start_deep_research_job] ERROR: Provider error: {str(e)}")
         raise RuntimeError(f"Provider configuration error: {str(e)}")

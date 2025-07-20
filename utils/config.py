@@ -31,7 +31,7 @@ PROVIDER_MODELS = {
         "base_url": None,  # Use default OpenAI base URL
     },
     "openrouter": {
-        "deep_research": "anthropic/claude-3.5-sonnet",  # No deep research equivalent, use best reasoning model
+        "deep_research": "perplexity/sonar-deep-research",  # Perplexity Sonar Pro Deep Research
         "chat": "anthropic/claude-3.5-haiku",
         "base_url": "https://openrouter.ai/api/v1",
     }
@@ -41,6 +41,7 @@ PROVIDER_MODELS = {
 DEEP_RESEARCH_MODEL = PROVIDER_MODELS[DEFAULT_PROVIDER]["deep_research"]
 CHAT_MODEL = PROVIDER_MODELS[DEFAULT_PROVIDER]["chat"]
 DEEP_RESEARCH_POLL_INTERVAL = 10  # seconds
+PERPLEXITY_DEEP_RESEARCH_TIMEOUT = 300  # 5 minutes for Perplexity Sonar Deep Research
 
 # Mastery settings
 MASTERY_THRESHOLD = 0.7
