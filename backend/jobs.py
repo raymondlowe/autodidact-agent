@@ -151,10 +151,10 @@ def rewrite_topic(initial_topic: str, questions: List[str], user_answers: str) -
     Returns:
         Rewritten, detailed topic instruction
     """
-    print(f"\n[rewrite_topic] Starting topic rewriting")
-    print(f"[rewrite_topic] Initial topic: '{initial_topic}'")
-    print(f"[rewrite_topic] Number of questions: {len(questions)}")
-    print(f"[rewrite_topic] User answers length: {len(user_answers)} chars")
+    logger.info(f"Starting topic rewriting")
+    logger.info(f"Initial topic: '{initial_topic}'")
+    logger.info(f"Number of questions: {len(questions)}")
+    logger.info(f"User answers length: {len(user_answers)} chars")
     
     # Create client using provider abstraction
     try:
@@ -172,8 +172,8 @@ Clarifying questions:
     
     formatted_content += f"\nUser's responses:\n{user_answers}"
     
-    print(f"[rewrite_topic] Formatted content for API:\n{formatted_content}")
-    print(f"[rewrite_topic] Using model: {get_model_for_task('chat')}")
+    logger.debug(f"Formatted content for API:\n{formatted_content}")
+    logger.info(f"Using model: {get_model_for_task('chat')}")
     
     try:
         def make_rewriter_call():
@@ -195,12 +195,12 @@ Clarifying questions:
         
         # Extract the rewritten topic
         rewritten_topic = response.choices[0].message.content.strip()
-        print(f"[rewrite_topic] Rewritten topic:\n{rewritten_topic}")
+        logger.info(f"Rewritten topic:\n{rewritten_topic}")
         
         return rewritten_topic
         
     except Exception as e:
-        print(f"[rewrite_topic] ERROR: {type(e).__name__}: {str(e)}")
+        logger.error(f"ERROR: {type(e).__name__}: {str(e)}")
         raise RuntimeError(f"Failed to rewrite topic: {str(e)}")
 
 
@@ -370,9 +370,8 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
         str: The job ID for polling (OpenAI) or pseudo-ID for immediate execution (Perplexity)
     """
     logger.info(f"[API CALL] Reason: Start deep research | Topic: {topic} | Hours: {hours if hours else 'n/a'}")
-        logger.info(f"[API CALL] Reason: Start deep research | Topic: {topic} | Hours: {hours if hours else 'n/a'}")
-        if hours:
-            logger.info(f"User wants to invest {hours} hours")
+    if hours:
+        logger.info(f"User wants to invest {hours} hours")
     
     # Create client using provider abstraction
     try:
@@ -415,8 +414,6 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
         
         # Handle different provider approaches
         if current_provider == "openai" and supports_deep_research:
-            logger.info(f"[API CALL] Using provider: {current_provider}")
-            logger.info(f"[API CALL] Using model: {research_model}")
             # OpenAI approach: Use background jobs with responses.create()
             input_messages = [
                 {
@@ -453,9 +450,7 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
             
         elif current_provider == "openrouter" and "perplexity" in research_model.lower():
             # Perplexity approach: Run in a background thread, immediately return job ID
-            print("[start_deep_research_job] Using Perplexity Sonar Deep Research (background thread)...")
-            logger.info(f"[API CALL] Using provider: {current_provider}")
-            logger.info(f"[API CALL] Using model: {research_model}")
+            logger.info("Using Perplexity Sonar Deep Research (background thread)...")
             import uuid, threading, json
             from pathlib import Path
             pseudo_job_id = f"perplexity-{str(uuid.uuid4())[:8]}"
@@ -552,19 +547,19 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
             return pseudo_job_id
         
     except openai.AuthenticationError:
-        print("[start_deep_research_job] ERROR: Authentication failed")
+        logger.error("Authentication failed")
         raise RuntimeError("Invalid API key. Please check your API key configuration.")
     except openai.PermissionDeniedError:
-        print("[start_deep_research_job] ERROR: Permission denied")
+        logger.error("Permission denied")
         raise RuntimeError("API key doesn't have access to the required model.")
     except openai.APITimeoutError:
-        print("[start_deep_research_job] ERROR: Request timeout")
+        logger.error("Request timeout")
         raise RuntimeError("Deep research request timed out. Perplexity requests can take 4-5 minutes.")
     except ProviderError as e:
-        print(f"[start_deep_research_job] ERROR: Provider error: {str(e)}")
+        logger.error(f"Provider error: {str(e)}")
         raise RuntimeError(f"Provider configuration error: {str(e)}")
     except Exception as e:
-        print(f"[start_deep_research_job] ERROR: {type(e).__name__}: {str(e)}")
+        logger.error(f"Unexpected error: {type(e).__name__}: {str(e)}")
         raise RuntimeError(f"Failed to start research job: {str(e)}") 
 
 
