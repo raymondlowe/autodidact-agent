@@ -6,6 +6,9 @@ Refactored from 02-topic-then-deep-research.py
 import json
 import time
 import re
+import uuid
+from datetime import datetime
+from pathlib import Path
 from typing import Dict, Optional
 import openai
 from openai import OpenAI
@@ -13,6 +16,91 @@ from utils.config import DEEP_RESEARCH_POLL_INTERVAL
 from utils.providers import create_client, get_model_for_task, get_current_provider, get_provider_info, get_api_call_params
 
 import jsonschema, networkx as nx, Levenshtein
+
+
+# Debugging infrastructure for API responses (copied from backend/jobs.py)
+def save_raw_api_response(response, context: str, job_id: str = None):
+    """Save raw API response to temp directory for debugging"""
+    try:
+        # Create debug directory
+        debug_dir = Path.home() / '.autodidact' / 'debug_responses'
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generate unique filename with timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]  # microseconds to milliseconds
+        job_suffix = f"_{job_id}" if job_id else ""
+        filename = f"{timestamp}_{context}{job_suffix}_raw.txt"
+        debug_file = debug_dir / filename
+        
+        # Save raw response - handle various response types
+        with open(debug_file, 'w', encoding='utf-8') as f:
+            f.write(f"=== RAW API RESPONSE DEBUG ===\n")
+            f.write(f"Context: {context}\n")
+            f.write(f"Job ID: {job_id or 'N/A'}\n")
+            f.write(f"Timestamp: {datetime.now().isoformat()}\n")
+            f.write(f"Response Type: {type(response)}\n")
+            f.write("=" * 50 + "\n\n")
+            
+            # Try to serialize the response in different ways
+            try:
+                # First try to convert to dict if it's an object
+                if hasattr(response, '__dict__'):
+                    f.write("=== RESPONSE AS DICT ===\n")
+                    f.write(str(response.__dict__))
+                    f.write("\n\n")
+                
+                # Try JSON serialization
+                f.write("=== RESPONSE AS JSON ===\n")
+                if hasattr(response, 'model_dump'):
+                    # Pydantic object
+                    f.write(json.dumps(response.model_dump(), indent=2, default=str))
+                elif hasattr(response, 'to_dict'):
+                    # Objects with to_dict method
+                    f.write(json.dumps(response.to_dict(), indent=2, default=str))
+                else:
+                    # Try direct JSON serialization
+                    f.write(json.dumps(response, indent=2, default=str))
+                f.write("\n\n")
+                
+            except Exception as json_error:
+                f.write(f"JSON serialization failed: {json_error}\n")
+                f.write("=== RESPONSE AS STRING ===\n")
+                f.write(str(response))
+                f.write("\n\n")
+            
+            # Try to extract key fields for analysis
+            try:
+                f.write("=== KEY FIELDS ANALYSIS ===\n")
+                f.write(f"Has 'choices' attribute: {hasattr(response, 'choices')}\n")
+                if hasattr(response, 'choices'):
+                    f.write(f"choices value: {response.choices}\n")
+                    f.write(f"choices type: {type(response.choices)}\n")
+                    if response.choices:
+                        f.write(f"choices length: {len(response.choices) if response.choices else 'None'}\n")
+                        if len(response.choices) > 0:
+                            f.write(f"choices[0]: {response.choices[0]}\n")
+                            f.write(f"choices[0] type: {type(response.choices[0])}\n")
+                            if hasattr(response.choices[0], 'message'):
+                                f.write(f"choices[0].message: {response.choices[0].message}\n")
+                                if hasattr(response.choices[0].message, 'content'):
+                                    f.write(f"choices[0].message.content: {response.choices[0].message.content}\n")
+                f.write("\n")
+                
+                # Check for other common fields
+                common_fields = ['id', 'object', 'created', 'model', 'usage', 'error']
+                for field in common_fields:
+                    if hasattr(response, field):
+                        f.write(f"Has '{field}': {getattr(response, field)}\n")
+                        
+            except Exception as analysis_error:
+                f.write(f"Key fields analysis failed: {analysis_error}\n")
+        
+        print(f"DEBUG: Saved raw API response to {debug_file}")
+        return str(debug_file)
+        
+    except Exception as e:
+        print(f"ERROR: Failed to save raw API response: {e}")
+        return None
 
 
 def clean_job_id(job_id: str) -> str:
@@ -275,6 +363,10 @@ def guardian_fixer(raw_json_str, error_bullets, client, high_model=False):
             temperature=0.1
         )
         resp = client.chat.completions.create(**params)
+        
+        # DEBUG: Save raw response
+        save_raw_api_response(resp, "guardian_fixer")
+        
         elapsed = time.perf_counter() - start
         print(f"Guardian pass finished in {elapsed:.2f} s")
         
