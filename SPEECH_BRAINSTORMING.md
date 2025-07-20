@@ -261,9 +261,135 @@ Enhanced: load_context → speech_setup → intro → adaptive_teaching_loop →
 ## 📊 Implementation Roadmap Recommendation
 
 ### Phase 1: Foundation (2-3 weeks)
-- Basic "Speak This" buttons using Web Speech API
-- Speech preference settings panel
-- Content parsing for math/code elements
+**Actionable implementation steps for both 'Speak This' (per-element TTS) and 'Auto-Speak' (global toggle) features:**
+
+#### 1. UI Integration
+- **Global Auto-Speak Toggle**:
+  - Add a slider/toggle component on every question education screen labeled 'Speak Aloud'
+  - Position consistently in the top-right or header area for visibility
+  - Use Streamlit's `st.toggle()` or `st.checkbox()` component
+  - Ensure toggle is visible but non-intrusive to learning flow
+
+- **Per-Element Speaker Icons**:
+  - Add 🔊 speaker icon buttons next to all major text elements:
+    - Learning objectives
+    - AI tutor responses
+    - Quiz questions and explanations
+    - Session content blocks
+  - Use small, clickable icons that don't disrupt text layout
+  - Implement using `st.button()` with emoji or icon styling
+
+#### 2. Global State Management
+- **Session State Implementation**:
+  - Store global auto-speak preference: `st.session_state['auto_speak'] = False`
+  - Initialize state in main app setup if not exists
+  - Update state immediately when toggle is changed
+  - Read state on every screen render to determine behavior
+
+- **State Persistence**:
+  - Auto-speak setting persists across page navigation within session
+  - Store in session state for immediate access
+  - Consider extending to user preferences in SQLite database for cross-session persistence
+
+#### 3. TTS Trigger Logic
+- **Auto-Speak Implementation**:
+  - Check `st.session_state['auto_speak']` on each screen render
+  - If enabled, automatically trigger TTS for major content elements in sequence:
+    1. Learning objectives
+    2. Main AI response content
+    3. Key explanations or summaries
+  - Skip repetitive UI elements (navigation, headers, footer text)
+
+- **Per-Element 'Speak This' Logic**:
+  - Each speaker button triggers TTS for its specific text element
+  - Independent of auto-speak setting (works in both modes)
+  - Clear visual feedback when speaking (button state change, highlight)
+
+#### 4. Speech Synthesis Integration
+- **Web Speech API Implementation**:
+  - Use browser's native `speechSynthesis` API via Streamlit components
+  - Create custom Streamlit component or use `st.components.v1.html()` for JavaScript integration
+  - Implement basic TTS function with text parameter
+  - Add voice selection, speed, and pitch controls
+
+- **TTS Function Structure**:
+  ```python
+  def speak_text(text, auto_speak_enabled=False):
+      if auto_speak_enabled or manual_trigger:
+          # Sanitize text for speech (remove markdown, clean formatting)
+          # Call browser TTS via custom component
+          # Handle speech queue and interruption
+  ```
+
+- **Event Handlers**:
+  - Toggle change handler: Update session state and provide feedback
+  - Speaker button handler: Trigger TTS for specific element
+  - Interruption handling: Stop current speech when new speech starts
+
+#### 5. UX Considerations
+- **Auto-Speak Persistence**:
+  - Setting remains active across navigation until manually toggled off
+  - Clear visual indicator when auto-speak is active (different toggle state)
+  - Graceful handling of page changes (stop current speech, resume on new page)
+
+- **Visual Feedback**:
+  - Active auto-speak indicator: Toggle shows "ON" state, possibly with subtle animation
+  - Speaking feedback: Highlight currently spoken text or show speaking icon
+  - Per-element feedback: Speaker button changes appearance when that element is being spoken
+
+- **User Control**:
+  - Easy access to stop/pause current speech
+  - Skip ahead functionality for long content
+  - Speed adjustment controls in settings
+
+#### 6. Code Structure Recommendations
+- **Component Updates** (`components/`):
+  - Create `speech_controls.py` for toggle and speaker button components
+  - Update existing components to include speaker icons where appropriate
+  - Ensure consistent styling and behavior across components
+
+- **Centralized TTS Logic** (`utils/`):
+  - Create `speech_utils.py` for core TTS functionality
+  - Implement text sanitization for speech (handle math, code, markdown)
+  - Create reusable functions for auto-speak and per-element TTS
+  - Handle speech queue management and interruption logic
+
+- **Provider Integration** (`utils/providers.py`):
+  - Abstract TTS provider selection (Web Speech API as primary)
+  - Prepare structure for future OpenAI TTS integration
+  - Implement provider fallback logic
+
+- **Session Management**:
+  - Update main app flow to initialize speech state
+  - Ensure speech preferences are available in all page contexts
+  - Handle state cleanup on session end
+
+#### 7. Testing & Verification
+- **Toggle Behavior Testing**:
+  - Verify toggle state persists across page navigation
+  - Test toggle on/off functionality on multiple screens
+  - Confirm visual feedback matches actual state
+
+- **Auto-Speak Testing**:
+  - Test auto-speak triggers on content load
+  - Verify correct content selection (major elements only)
+  - Test interruption handling when navigating during speech
+
+- **Per-Element Testing**:
+  - Test individual speaker buttons on various content types
+  - Verify proper text extraction and cleaning
+  - Test with mathematical formulas and code examples
+
+- **Cross-Browser Compatibility**:
+  - Test Web Speech API support across browsers
+  - Verify graceful degradation when TTS not available
+  - Test on mobile devices
+
+- **Content Type Testing**:
+  - Learning objectives and session content
+  - AI responses with various formatting (lists, code, math)
+  - Quiz questions and explanations
+  - Error handling for unspeakable content
 
 ### Phase 2: Enhanced UX (3-4 weeks)  
 - Auto-speech mode with smart content detection
