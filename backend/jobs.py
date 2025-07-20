@@ -22,6 +22,25 @@ MAX_RETRIES = 3
 RETRY_DELAY = 2  # seconds
 
 
+def get_token_count(response) -> str:
+    """
+    Extract token count from API response, handling both object and dict formats.
+    
+    Args:
+        response: API response object
+        
+    Returns:
+        str: Token count as string or 'n/a' if not available
+    """
+    usage_info = getattr(response, 'usage', None)
+    if usage_info:
+        if hasattr(usage_info, 'total_tokens'):
+            return str(usage_info.total_tokens)
+        elif isinstance(usage_info, dict):
+            return str(usage_info.get('total_tokens', 'n/a'))
+    return 'n/a'
+
+
 def retry_api_call(func, *args, max_retries=MAX_RETRIES, **kwargs):
     """Retry API calls with exponential backoff"""
     last_error = None
@@ -96,7 +115,7 @@ def clarify_topic(topic: str, hours: Optional[int] = None) -> List[str]:
         logger.info("Making API call for topic clarification...")
         response = retry_api_call(make_clarifier_call)
         meta = getattr(response, 'meta', None) or getattr(response, 'metadata', None) or {}
-        logger.info(f"[API RETURN] Topic clarification complete | Model: {get_model_for_task('chat')} | Tokens: {getattr(response, 'usage', {}).get('total_tokens', 'n/a')} | Price: {meta.get('price', 'n/a')} | Meta: {meta}")
+        logger.info(f"[API RETURN] Topic clarification complete | Model: {get_model_for_task('chat')} | Tokens: {get_token_count(response)} | Price: {meta.get('price', 'n/a')} | Meta: {meta}")
 
         # Extract the response content
         questions_text = response.choices[0].message.content.strip()
@@ -191,7 +210,7 @@ Clarifying questions:
         logger.info("Making API call for topic rewriting...")
         response = retry_api_call(make_rewriter_call)
         meta = getattr(response, 'meta', None) or getattr(response, 'metadata', None) or {}
-        logger.info(f"[API RETURN] Topic rewriting complete | Model: {get_model_for_task('chat')} | Tokens: {getattr(response, 'usage', {}).get('total_tokens', 'n/a')} | Price: {meta.get('price', 'n/a')} | Meta: {meta}")
+        logger.info(f"[API RETURN] Topic rewriting complete | Model: {get_model_for_task('chat')} | Tokens: {get_token_count(response)} | Price: {meta.get('price', 'n/a')} | Meta: {meta}")
         
         # Extract the rewritten topic
         rewritten_topic = response.choices[0].message.content.strip()
@@ -257,7 +276,7 @@ def process_clarification_responses(questions: List[str], responses: List[str]) 
         logger.info("Making API call for topic refinement...")
         response = retry_api_call(make_refinement_call)
         meta = getattr(response, 'meta', None) or getattr(response, 'metadata', None) or {}
-        logger.info(f"[API RETURN] Topic refinement complete | Model: {get_model_for_task('chat')} | Tokens: {getattr(response, 'usage', {}).get('total_tokens', 'n/a')} | Price: {meta.get('price', 'n/a')} | Meta: {meta}")
+        logger.info(f"[API RETURN] Topic refinement complete | Model: {get_model_for_task('chat')} | Tokens: {get_token_count(response)} | Price: {meta.get('price', 'n/a')} | Meta: {meta}")
         return response.choices[0].message.content.strip()
         
     except Exception as e:
@@ -438,7 +457,7 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
                 reasoning={"summary": "auto"},
             )
             meta = getattr(resp, 'meta', None) or getattr(resp, 'metadata', None) or {}
-            logger.info(f"[API RETURN] Deep research job submitted | Model: {research_model} | Job ID: {resp.id} | Tokens: {getattr(resp, 'usage', {}).get('total_tokens', 'n/a')} | Price: {meta.get('price', 'n/a')} | Meta: {meta}")
+            logger.info(f"[API RETURN] Deep research job submitted | Model: {research_model} | Job ID: {resp.id} | Tokens: {get_token_count(resp)} | Price: {meta.get('price', 'n/a')} | Meta: {meta}")
             
             job_id = resp.id
             # Clean the job ID in case it contains control characters
@@ -486,7 +505,7 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
                         timeout=PERPLEXITY_DEEP_RESEARCH_TIMEOUT
                     )
                     meta = getattr(response, 'meta', None) or getattr(response, 'metadata', None) or {}
-                    logger.info(f"[API RETURN] Perplexity deep research complete | Model: {research_model} | Job ID: {pseudo_job_id} | Tokens: {getattr(response, 'usage', {}).get('total_tokens', 'n/a')} | Price: {meta.get('price', 'n/a')} | Meta: {meta}")
+                    logger.info(f"[API RETURN] Perplexity deep research complete | Model: {research_model} | Job ID: {pseudo_job_id} | Tokens: {get_token_count(response)} | Price: {meta.get('price', 'n/a')} | Meta: {meta}")
                     response_content = response.choices[0].message.content
                     with open(temp_file, 'w') as f:
                         json.dump({
@@ -523,7 +542,7 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
             )
             response = client.chat.completions.create(**params)
             meta = getattr(response, 'meta', None) or getattr(response, 'metadata', None) or {}
-            logger.info(f"[API RETURN] Fallback chat completion complete | Model: {research_model} | Tokens: {getattr(response, 'usage', {}).get('total_tokens', 'n/a')} | Price: {meta.get('price', 'n/a')} | Meta: {meta}")
+            logger.info(f"[API RETURN] Fallback chat completion complete | Model: {research_model} | Tokens: {get_token_count(response)} | Price: {meta.get('price', 'n/a')} | Meta: {meta}")
             
             # Generate a pseudo job ID and store response
             import uuid
