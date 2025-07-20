@@ -368,7 +368,10 @@ def check_and_complete_job(project_id: str, job_id: str) -> bool:
         # Process the JSON response (common for both provider types)
         # fixes small typos, invalid JSON, etc, by passing to 4o or o4-mini to fix
         try:
+            print(f"[check_and_complete_job] Processing JSON response (length: {len(json_str)} chars)")
+            print(f"[check_and_complete_job] Response preview (first 200 chars): {json_str[:200]}")
             json_str = deep_research_output_cleanup(json_str, client)
+            print(f"[check_and_complete_job] JSON cleanup completed successfully")
         except Exception as cleanup_error:
             print(f"[check_and_complete_job] JSON cleanup failed, using original response: {cleanup_error}")
             # Continue with the original JSON string if cleanup fails
