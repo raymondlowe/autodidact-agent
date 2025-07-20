@@ -9,7 +9,6 @@ import os
 # Add the project root to Python path  
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-def demo_provider_info():
     """Demonstrate the updated provider information"""
     from utils.providers import get_provider_info, list_available_models
     from utils.config import SUPPORTED_PROVIDERS

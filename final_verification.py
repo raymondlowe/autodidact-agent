@@ -1,23 +1,3 @@
-#!/usr/bin/env python3
-"""
-Final verification test for the Perplexity Sonar Deep Research implementation
-This script demonstrates the complete workflow end-to-end
-"""
-
-import sys
-import os
-
-# Add the project root to Python path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-def test_complete_workflow():
-    """Test the complete workflow from provider switching to job creation"""
-    print("🧪 Complete Workflow Test")
-    print("=" * 50)
-    
-    from utils.config import set_current_provider, save_api_key, get_current_provider
-    from utils.providers import get_provider_info, get_model_for_task
-    from backend.jobs import start_deep_research_job
     
     # Test both providers
     providers_to_test = ["openai", "openrouter"]

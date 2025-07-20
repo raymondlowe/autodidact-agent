@@ -161,7 +161,6 @@ def main():
     
     try:
         demos = [
-            demo_setup_workflow,
             demo_provider_switching, 
             demo_api_workflow,
             demo_config_structure,
