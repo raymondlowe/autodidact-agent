@@ -277,7 +277,19 @@ def guardian_fixer(raw_json_str, error_bullets, client, high_model=False):
         resp = client.chat.completions.create(**params)
         elapsed = time.perf_counter() - start
         print(f"Guardian pass finished in {elapsed:.2f} s")
-        return resp.choices[0].message.content
+        
+        # Extract response content with proper null checks
+        if not resp or not hasattr(resp, 'choices') or not resp.choices:
+            raise ValueError("Invalid response structure: missing or empty choices")
+        
+        if not resp.choices[0] or not hasattr(resp.choices[0], 'message') or not resp.choices[0].message:
+            raise ValueError("Invalid response structure: missing or empty message")
+        
+        response_content = resp.choices[0].message.content
+        if not response_content:
+            raise ValueError("Invalid response structure: empty content")
+        
+        return response_content
 
 def extract_json_from_markdown(content: str) -> str:
     """

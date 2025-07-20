@@ -117,8 +117,18 @@ def clarify_topic(topic: str, hours: Optional[int] = None) -> List[str]:
         meta = getattr(response, 'meta', None) or getattr(response, 'metadata', None) or {}
         logger.info(f"[API RETURN] Topic clarification complete | Model: {get_model_for_task('chat')} | Tokens: {get_token_count(response)} | Price: {meta.get('price', 'n/a')} | Meta: {meta}")
 
-        # Extract the response content
-        questions_text = response.choices[0].message.content.strip()
+        # Extract the response content with proper null checks
+        if not response or not hasattr(response, 'choices') or not response.choices:
+            raise ValueError("Invalid response structure: missing or empty choices")
+        
+        if not response.choices[0] or not hasattr(response.choices[0], 'message') or not response.choices[0].message:
+            raise ValueError("Invalid response structure: missing or empty message")
+        
+        questions_text = response.choices[0].message.content
+        if not questions_text:
+            raise ValueError("Invalid response structure: empty content")
+        
+        questions_text = questions_text.strip()
         logger.debug(f"Raw response:\n{questions_text}")
 
         # Parse the questions from the response
@@ -212,8 +222,18 @@ Clarifying questions:
         meta = getattr(response, 'meta', None) or getattr(response, 'metadata', None) or {}
         logger.info(f"[API RETURN] Topic rewriting complete | Model: {get_model_for_task('chat')} | Tokens: {get_token_count(response)} | Price: {meta.get('price', 'n/a')} | Meta: {meta}")
         
-        # Extract the rewritten topic
-        rewritten_topic = response.choices[0].message.content.strip()
+        # Extract the rewritten topic with proper null checks
+        if not response or not hasattr(response, 'choices') or not response.choices:
+            raise ValueError("Invalid response structure: missing or empty choices")
+        
+        if not response.choices[0] or not hasattr(response.choices[0], 'message') or not response.choices[0].message:
+            raise ValueError("Invalid response structure: missing or empty message")
+        
+        rewritten_topic = response.choices[0].message.content
+        if not rewritten_topic:
+            raise ValueError("Invalid response structure: empty content")
+        
+        rewritten_topic = rewritten_topic.strip()
         logger.info(f"Rewritten topic:\n{rewritten_topic}")
         
         return rewritten_topic
@@ -277,7 +297,19 @@ def process_clarification_responses(questions: List[str], responses: List[str]) 
         response = retry_api_call(make_refinement_call)
         meta = getattr(response, 'meta', None) or getattr(response, 'metadata', None) or {}
         logger.info(f"[API RETURN] Topic refinement complete | Model: {get_model_for_task('chat')} | Tokens: {get_token_count(response)} | Price: {meta.get('price', 'n/a')} | Meta: {meta}")
-        return response.choices[0].message.content.strip()
+        
+        # Extract response content with proper null checks
+        if not response or not hasattr(response, 'choices') or not response.choices:
+            raise ValueError("Invalid response structure: missing or empty choices")
+        
+        if not response.choices[0] or not hasattr(response.choices[0], 'message') or not response.choices[0].message:
+            raise ValueError("Invalid response structure: missing or empty message")
+        
+        response_content = response.choices[0].message.content
+        if not response_content:
+            raise ValueError("Invalid response structure: empty content")
+        
+        return response_content.strip()
         
     except Exception as e:
         raise RuntimeError(f"Failed to process clarification responses: {e}")
@@ -506,7 +538,17 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
                     )
                     meta = getattr(response, 'meta', None) or getattr(response, 'metadata', None) or {}
                     logger.info(f"[API RETURN] Perplexity deep research complete | Model: {research_model} | Job ID: {pseudo_job_id} | Tokens: {get_token_count(response)} | Price: {meta.get('price', 'n/a')} | Meta: {meta}")
+                    
+                    # Safely extract response content with proper null checks
+                    if not response or not hasattr(response, 'choices') or not response.choices:
+                        raise ValueError("Invalid response structure: missing or empty choices")
+                    
+                    if not response.choices[0] or not hasattr(response.choices[0], 'message') or not response.choices[0].message:
+                        raise ValueError("Invalid response structure: missing or empty message")
+                    
                     response_content = response.choices[0].message.content
+                    if not response_content:
+                        raise ValueError("Invalid response structure: empty content")
                     with open(temp_file, 'w') as f:
                         json.dump({
                             "status": "completed",
@@ -555,10 +597,22 @@ def start_deep_research_job(topic: str, hours: Optional[int] = None, oldAttemptS
             temp_file = temp_dir / f"{pseudo_job_id}.json"
             
             import json
+            
+            # Safely extract response content with proper null checks
+            if not response or not hasattr(response, 'choices') or not response.choices:
+                raise ValueError("Invalid response structure: missing or empty choices")
+            
+            if not response.choices[0] or not hasattr(response.choices[0], 'message') or not response.choices[0].message:
+                raise ValueError("Invalid response structure: missing or empty message")
+            
+            response_content = response.choices[0].message.content
+            if not response_content:
+                raise ValueError("Invalid response structure: empty content")
+            
             with open(temp_file, 'w') as f:
                 json.dump({
                     "status": "completed",
-                    "content": response.choices[0].message.content,
+                    "content": response_content,
                     "model": research_model,
                     "provider": current_provider
                 }, f)
